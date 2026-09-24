@@ -1,5 +1,7 @@
 # Consilium
 
+**Live demo:** https://consilium-khaki-three.vercel.app — no login, no API key.
+
 **An AI investment committee you can backtest, paper-trade, and interrogate.**
 
 Most "AI hedge fund" projects poll a handful of LLM personas and average their
@@ -47,7 +49,7 @@ can never run the fund, and the models can only ever make the book smaller.
 ## Quick start
 
 ```bash
-git clone <this repo> consilium && cd consilium
+git clone https://github.com/vaughanf1/consilium.git && cd consilium
 python3.11 -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
 
