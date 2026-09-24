@@ -192,3 +192,46 @@ def test_truly_empty_response_raises(monkeypatch):
     c = _client_returning(_Choice(""), monkeypatch)
     with pytest.raises(LLMError, match="empty response"):
         c.complete("s", "u")
+
+
+def test_provider_returning_no_choices_is_named_not_cryptic(monkeypatch):
+    """Gateways sometimes answer with choices=null and an in-band error. That
+    must surface as a message naming the model, not an IndexError or a
+    NoneType crash from deep inside the client."""
+    from consilium.llm import LLMError
+    from consilium.llm.client import OpenAICompatibleClient
+    import openai
+
+    class _Null:
+        choices = None
+        error = {"message": "upstream rate limited"}
+        model_extra = {}
+
+    monkeypatch.setattr(openai, "OpenAI", lambda **kw: type("C", (), {
+        "chat": type("Ch", (), {"completions": type("Co", (), {"create": staticmethod(lambda **kw: _Null())})()})()})())
+    c = OpenAICompatibleClient("gw-1", "k", None)
+    with pytest.raises(LLMError, match="no choices"):
+        c.complete("s", "u")
+
+
+def test_a_council_seat_survives_a_null_choices_response(monkeypatch, tmp_path):
+    """And the council still seats that member, on its rule, with the reason recorded."""
+    import consilium.committee.board as board
+    from consilium.committee.board import Briefing, convene_board
+    from consilium.core.spec import BoardMemberSpec
+    from consilium.llm import LLMError, PromptCache
+
+    def exploding(model=None, **kw):
+        class C:
+            def __init__(self): self.model = model
+            def complete(self, s, u): raise LLMError("gw: provider returned no choices (upstream rate limited)")
+        return C()
+
+    monkeypatch.setattr(board, "make_llm", exploding)
+    b = Briefing(regime="neutral", cio_exposure=0.8, cio_memo="", drawdown=0.0, dispersion=0.2,
+                 convictions={"AAPL": 0.5}, red_team=[], market=None, n_positions=1)
+    res = convene_board([BoardMemberSpec(name="macro", model="gw")], b, PromptCache(tmp_path),
+                        "2024-01-01", use_llm=True, default_model=None)
+    assert res.votes[0].source == "rules"
+    assert "no choices" in res.votes[0].fallback_reason
+    assert 0.0 <= res.exposure <= 1.0

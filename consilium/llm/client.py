@@ -71,7 +71,15 @@ class OpenAICompatibleClient:
         except Exception as exc:
             raise LLMError(f"{self.model}: {exc}") from exc
 
-        choice = resp.choices[0]
+        # Gateways can return an in-band error with choices=null instead of a
+        # transport failure. Indexing straight in turns that into a cryptic
+        # "'NoneType' object is not subscriptable" three frames away.
+        choices = getattr(resp, "choices", None)
+        if not choices:
+            detail = getattr(resp, "error", None) or getattr(resp, "model_extra", {}).get("error") or "no detail given"
+            raise LLMError(f"{self.model}: provider returned no choices ({detail})")
+
+        choice = choices[0]
         content = (choice.message.content or "").strip()
         if content:
             return content
