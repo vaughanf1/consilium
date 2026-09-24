@@ -22,6 +22,7 @@ from pydantic import BaseModel, Field
 
 from consilium import __version__
 from consilium.analysts import describe_analysts
+from consilium.core.build import build_info
 from consilium.core.paths import MANDATES_DIR, RUNS_DIR, SERVERLESS, ensure_home, load_env_file
 from consilium.core.spec import FundSpec, dump_spec, load_spec
 from consilium.data import make_provider
@@ -89,13 +90,13 @@ def create_app() -> FastAPI:
     def health():
         return {"ok": True, "version": __version__, "model": current_model(), "llm_available": llm_available(),
                 "home": str(MANDATES_DIR.parent), "serverless": SERVERLESS, "durable": blob_store() is not None,
-                "budget": guard.status()}
+                "budget": guard.status(), "build": build_info()}
 
     @app.get("/api/meta")
     def meta():
         return {"analysts": describe_analysts(), "models": list_models(), "current_model": current_model(),
                 "llm_available": llm_available(), "providers": ["synthetic", "yfinance"], "serverless": SERVERLESS,
-                "durable": blob_store() is not None, "budget": guard.status()}
+                "durable": blob_store() is not None, "budget": guard.status(), "build": build_info()}
 
     # mandates -----------------------------------------------------------
     @app.get("/api/funds")

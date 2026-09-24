@@ -678,6 +678,8 @@
       pill.classList.toggle("ok", state.meta.llm_available);
       $("#llm-text").textContent = state.meta.llm_available ? `model ${state.meta.current_model}` : `no LLM key — quant + rules only`;
       paintBudget(state.meta.budget);
+      const bi = state.meta.build || {};
+      if (bi.commit) $("#build-stamp").textContent = `${bi.env} · ${bi.commit}`;
       if (state.meta.budget && state.meta.budget.allow_llm === false) {
         const n = document.createElement("div"); n.innerHTML = budgetNotice(state.meta.budget);
         $("#view-council").insertBefore(n.firstChild, $("#view-council").firstChild);
