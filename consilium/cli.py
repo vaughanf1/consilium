@@ -68,6 +68,41 @@ def _print_metrics(res) -> None:
                       "Set ANTHROPIC_API_KEY (or another provider) to staff the personas.[/]")
 
 
+def _estimate_llm_calls(spec, n_tickers: int, n_periods: int) -> int:
+    """Worst case, before the prompt cache saves anything: every LLM analyst on
+    every ticker every period, plus the chair twice and each board seat once."""
+    from consilium.analysts import ANALYST_REGISTRY
+    llm_analysts = sum(1 for st in spec.strategies for a in st.analysts
+                       if ANALYST_REGISTRY[a.name].kind == "llm")
+    per_period = llm_analysts * n_tickers
+    if spec.committee.red_team:
+        per_period += 1
+    if spec.committee.cio:
+        per_period += 1
+    if spec.committee.board:
+        per_period += len(spec.committee.board_members)
+    return per_period * n_periods
+
+
+def _confirm_spend(spec, universe, start, end, args) -> bool:
+    """Loudly estimate before a long LLM backtest. Thousands of calls should
+    never start because someone typed a date range."""
+    from consilium.llm import llm_available
+    if not llm_available() or getattr(args, "yes", False):
+        return True
+    weeks = max(1, (_date.fromisoformat(end) - _date.fromisoformat(start)).days // 7)
+    periods = {"daily": weeks * 5, "weekly": weeks, "biweekly": weeks // 2, "monthly": weeks // 4}[spec.rebalance]
+    calls = _estimate_llm_calls(spec, len(universe), max(1, periods))
+    if calls <= 250:
+        return True
+    console.print(
+        f"[yellow]This backtest could make up to [bold]{calls:,}[/bold] model calls "
+        f"({len(universe)} tickers x {periods} {spec.rebalance} periods).[/]\n"
+        f"[dim]The prompt cache will cut that a lot on reruns, but the first pass is real spend.\n"
+        f"Re-run with --yes to proceed, or set CONSILIUM_NO_LLM=1 to run it free on quant analysts.[/]")
+    return False
+
+
 def cmd_backtest(args) -> None:
     from consilium.backtest import backtest_fund
     from consilium.core.spec import Fund, load_spec, normalize_universe
@@ -79,6 +114,8 @@ def cmd_backtest(args) -> None:
     universe = normalize_universe(args.tickers)
     end = args.end or _date.today().isoformat()
     start = args.start or (_date.fromisoformat(end) - timedelta(weeks=args.weeks)).isoformat()
+    if not _confirm_spend(spec, universe, start, end, args):
+        raise SystemExit(1)
     provider = make_provider(args.provider)
     with console.status(f"[bold]{spec.name}[/]: backtesting {start} → {end} over {', '.join(universe)} ({provider.name})…"):
         res = backtest_fund(fund, start, end, provider, universe, model=args.model)
@@ -92,6 +129,12 @@ def cmd_backtest(args) -> None:
 
 
 def cmd_demo(args) -> None:
+    """The demo is free and offline by design. A configured key must not turn
+    `consilium demo` into a surprise bill — opt in with --with-llm."""
+    if not getattr(args, "with_llm", False):
+        os.environ["CONSILIUM_NO_LLM"] = "1"
+        console.print("[dim]demo runs on quant analysts + rules (free, offline). "
+                      "Add --with-llm to staff the personas with your configured model.[/]")
     args.mandate = args.mandate or "committee-balanced"
     args.tickers = args.tickers or "AAPL,MSFT,NVDA,GOOGL,AMZN,JPM,UNH,XOM,PG,CAT"
     args.provider = "synthetic"
@@ -194,10 +237,13 @@ def main(argv=None) -> None:
 
     bt = sub.add_parser("backtest", help="backtest a mandate over history"); common(bt)
     bt.add_argument("--start"); bt.add_argument("--end"); bt.add_argument("--weeks", type=int, default=78); bt.add_argument("--out")
+    bt.add_argument("--yes", action="store_true", help="skip the model-spend confirmation")
     bt.set_defaults(fn=cmd_backtest)
 
     dm = sub.add_parser("demo", help="offline demo backtest on synthetic data (no keys, no network)"); common(dm, False)
     dm.add_argument("--start"); dm.add_argument("--end"); dm.add_argument("--weeks", type=int, default=78); dm.add_argument("--out")
+    dm.add_argument("--with-llm", action="store_true", help="staff the personas with your configured model (costs money)")
+    dm.add_argument("--yes", action="store_true")
     dm.set_defaults(fn=cmd_demo)
 
     rn = sub.add_parser("run", help="run one paper cycle as of a date; the book carries in the ledger"); common(rn)

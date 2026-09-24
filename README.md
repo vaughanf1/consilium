@@ -1,6 +1,7 @@
 # Consilium
 
 **Live demo:** https://consilium-khaki-three.vercel.app — no login, no API key.
+**Full product context:** [`docs/CONTEXT.md`](docs/CONTEXT.md) — every feature, the full cast, verified numbers, and what the system will not claim.
 
 **An AI investment committee you can backtest, paper-trade, and interrogate.**
 
@@ -53,7 +54,7 @@ git clone https://github.com/vaughanf1/consilium.git && cd consilium
 python3.11 -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
 
-consilium demo            # offline backtest on the synthetic market — no keys, no network
+consilium demo            # offline backtest on the synthetic market — free and keyless by design
 consilium serve           # the dashboard → http://127.0.0.1:8765
 ```
 
@@ -73,6 +74,14 @@ consilium backtest committee-balanced --tickers AAPL,MSFT,JPM --model ollama:lla
 ```
 
 Keys can also live in `~/.consilium/.env` (see `.env.example`).
+
+**Spending is guarded three ways**, because a key plus a long backtest is
+thousands of model calls:
+
+- `consilium demo` is always free — it runs on quant analysts and rules even when a key is configured. Opt in with `--with-llm`.
+- A CLI backtest that would make more than ~250 model calls prints the estimate and stops until you pass `--yes`.
+- `CONSILIUM_NO_LLM=1` is a real kill switch, enforced where every client is built.
+- The hosted demo caps daily spend (`CONSILIUM_DAILY_USD`, default $3) measured against the provider's actual billed usage, and **degrades to rules rather than breaking** when it is reached.
 
 ---
 
@@ -268,7 +277,7 @@ consilium/
   dashboard/   index.html · app.css · app.js
   mandates/    bundled YAML mandates
   cli.py
-tests/         42 tests: determinism, point-in-time, committee mechanics, risk, costs, ledger, API, LLM path (fake client)
+tests/         51 tests: determinism, point-in-time, committee mechanics, risk, costs, ledger, API, LLM path (fake client)
 ```
 
 ## Extending

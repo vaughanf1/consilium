@@ -131,7 +131,14 @@ def current_model() -> str:
 
 
 def make_llm(model: str | None = None, **kw) -> LLMClient:
-    """Build a client for `model` (`provider:id` or a registry id), routed by provider."""
+    """Build a client for `model` (`provider:id` or a registry id), routed by provider.
+
+    CONSILIUM_NO_LLM is enforced HERE rather than at each call site: it is the
+    one place every analyst, chair and board seat must pass through, so setting
+    it genuinely guarantees no model is contacted and nothing is spent.
+    """
+    if os.environ.get("CONSILIUM_NO_LLM"):
+        raise LLMError("CONSILIUM_NO_LLM is set — running on quant analysts and rules, no model calls")
     model = model or current_model()
     provider = provider_for(model)
     model_id = model.split(":", 1)[1] if ":" in model else model
