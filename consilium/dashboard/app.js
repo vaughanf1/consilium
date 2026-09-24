@@ -661,9 +661,13 @@
       await refreshFunds();
       $("#p-date").value = "2025-06-30";
       $("#c-date").value = "2025-06-30";
+      const syncProvider = () => { $("#provider-pill").textContent = `data: ${$("#c-fund").closest(".filters") && $("#view-council").classList.contains("active") ? $("#c-provider").value : $("#f-provider").value}`; };
+      ["#c-provider", "#f-provider"].forEach((sel) => { const el = $(sel); if (el) el.onchange = syncProvider; });
+      $$(".nav button").forEach((b) => b.addEventListener("click", syncProvider));
+      syncProvider();
       const last = await api("/api/ledger");
       const bt = last.backtests && last.backtests[0];
-      if (bt) { try { const res = await api(`/api/backtests/${bt.id}`); setResult(res, "backtest"); $("#f-fund").value = res.fund; $("#f-tickers").value = res.universe.join(","); $("#f-start").value = res.start; $("#f-end").value = res.end; $("#f-provider").value = res.provider; $("#provider-pill").textContent = `data: ${res.provider}`; } catch {} }
+      if (bt) { try { const res = await api(`/api/backtests/${bt.id}`); setResult(res, "backtest"); $("#f-fund").value = res.fund; $("#f-tickers").value = res.universe.join(","); $("#f-start").value = res.start; $("#f-end").value = res.end; $("#f-provider").value = res.provider; } catch {} }
       let view = "council"; try { view = localStorage.getItem("consilium-view") || view; } catch {}
       showView(view);
     } catch (e) { $("#bt-status").innerHTML = `<span class="loss">cannot reach the API: ${esc(e.message)}</span>`; }
