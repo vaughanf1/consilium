@@ -1,0 +1,60 @@
+# The Hedge Fund Manager Council — built to be watched live.
+#
+# The book is produced by the QUANT analysts, so it lands in about a second and
+# the council is the show: five manager archetypes, each answered by a different
+# model, voting on how much of the book to deploy. Votes arrive in the order the
+# models finish thinking.
+#
+# Works with no key at all (every seat falls back to its rule), and with an
+# OpenRouter key every seat is a different vendor.
+name: council-live
+description: The manager council, live — a quant book in one second, then five models argue about how much of it to deploy.
+strategies:
+  - name: signals
+    display_name: Signal Desk
+    weight: 1.0
+    analysts:
+      - name: trend
+      - name: value_quality
+      - name: lowvol
+        weight: 0.6
+      - name: meanrev
+        weight: 0.4
+committee:
+  red_team: true
+  cio: true
+  red_team_top_n: 4
+  chair_model: openrouter:mistralai/mistral-medium-3-5   # Red Team + CIO run here; fast keeps the wait short
+  board: true
+  board_members:
+    # Benchmarked 24 Sep 2026 for latency + schema compliance on the real board
+    # prompt: every seat answers in under 8s, five different vendors. Avoid
+    # reasoning models here (deepseek-v4.1, qwen3.8-flash, grok-4.6 all take
+    # 25-55s because they think before answering) — they still WORK, they just
+    # make the council a slow watch.
+    - name: macro
+      model: openrouter:meta-llama/llama-4-maverick
+    - name: risk_budgeter
+      model: openrouter:anthropic/claude-sonnet-4.5
+    - name: concentrator
+      model: openrouter:openai/gpt-6-luna
+    - name: systematizer
+      model: openrouter:mistralai/mistral-medium-3-5
+    - name: preserver
+      model: openrouter:google/gemini-3.7-flash
+portfolio:
+  sizing: vol_scaled
+  reference_vol: 0.20
+  min_conviction: 0.08
+  rebalance_band: 0.015
+  max_names: 10
+risk:
+  max_position_pct: 0.15
+  max_gross_exposure: 1.0
+  min_net_exposure: -0.3
+  max_sector_pct: 0.40
+  drawdown_soft: 0.10
+  drawdown_hard: 0.20
+capital: 100000
+rebalance: weekly
+benchmark: SPY

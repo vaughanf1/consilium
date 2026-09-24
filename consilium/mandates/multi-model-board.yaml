@@ -1,0 +1,66 @@
+# A board of five different MODELS.
+#
+# Each seat on the investment board is answered by a different LLM, so the
+# disagreement is between models rather than one model arguing with itself.
+# Needs an OpenRouter key (OPENROUTER_API_KEY); swap the model ids for any
+# slugs your account can reach — `consilium models` lists the live catalogue.
+# Five vendors, one seat each. A full 79-meeting backtest costs roughly $1 of
+# board votes at these prices; the analysts above are the larger spend.
+#
+# With no key the seats fall back to their deterministic rule versions and the
+# board still sits, so this mandate runs either way.
+name: multi-model-board
+description: Five fund-manager archetypes on the investment board, each answered by a different model.
+strategies:
+  - name: core
+    display_name: Core Book
+    weight: 0.6
+    analysts:
+      - name: owner
+      - name: skeptic
+      - name: value_quality
+  - name: systematic
+    display_name: Systematic
+    weight: 0.4
+    analysts:
+      - name: trend
+      - name: lowvol
+        weight: 0.6
+committee:
+  red_team: true
+  cio: true
+  chair_model: openrouter:mistralai/mistral-medium-3-5
+  board: true
+  board_members:
+    # Benchmarked 24 Sep 2026 for latency + schema compliance on the real board
+    # prompt: every seat answers in under 8s, five different vendors. Avoid
+    # reasoning models here (deepseek-v4.1, qwen3.8-flash, grok-4.6 all take
+    # 25-55s because they think before answering) — they still WORK, they just
+    # make the council a slow watch.
+    - name: macro
+      model: openrouter:meta-llama/llama-4-maverick
+    - name: risk_budgeter
+      model: openrouter:anthropic/claude-sonnet-4.5
+    - name: concentrator
+      model: openrouter:openai/gpt-6-luna
+    - name: systematizer
+      model: openrouter:mistralai/mistral-medium-3-5
+    - name: preserver
+      model: openrouter:google/gemini-3.7-flash
+portfolio:
+  sizing: vol_scaled
+  reference_vol: 0.20
+  min_conviction: 0.10
+  rebalance_band: 0.015
+  max_names: 12
+risk:
+  max_position_pct: 0.15
+  max_gross_exposure: 1.0
+  min_net_exposure: -0.3
+  max_sector_pct: 0.40
+  portfolio_vol_target: 0.16
+  drawdown_soft: 0.10
+  drawdown_hard: 0.20
+capital: 100000
+rebalance: weekly
+benchmark: SPY

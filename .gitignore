@@ -1,0 +1,16 @@
+# environments & secrets
+.venv/
+.env*
+!.env.example
+.vercel
+
+# python
+__pycache__/
+*.pyc
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+
+# build output
+public/

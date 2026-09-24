@@ -1,0 +1,215 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Consilium</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230c0e12'/%3E%3Ctext x='16' y='23' font-family='Georgia,serif' font-size='20' text-anchor='middle' fill='%2319d3a2'%3EC%3C/text%3E%3C/svg%3E">
+<meta name="theme-color" content="#0c0e12">
+<link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+<header class="masthead">
+  <div class="wordmark">
+    <h1>Consilium</h1>
+    <span class="tag">an investment committee, in session</span>
+  </div>
+  <div class="right">
+    <span class="pill" id="llm-pill"><span class="dot"></span><span id="llm-text">checking model…</span></span>
+    <span class="pill" id="provider-pill" title="data provider used for the current research run">data: synthetic</span>
+    <button class="btn small" id="theme-toggle" title="toggle dark / light">◐</button>
+  </div>
+</header>
+
+<nav class="nav" role="tablist">
+  <button data-view="council" class="active">Council</button>
+  <button data-view="research">Research</button>
+  <button data-view="committee">Committee</button>
+  <button data-view="risk">Risk &amp; Book</button>
+  <button data-view="paper">Paper Fund</button>
+  <button data-view="mandates">Mandates</button>
+</nav>
+
+<main>
+  <!-- ================= RESEARCH ================= -->
+  <!-- ================= COUNCIL ================= -->
+  <section class="view active" id="view-council">
+    <div class="filters">
+      <div class="field"><label>Mandate</label><select id="c-fund"></select></div>
+      <div class="field grow"><label>Universe</label><input id="c-tickers" value="AAPL,MSFT,NVDA,JPM,XOM"></div>
+      <div class="field"><label>As of</label><input id="c-date" type="date"></div>
+      <div class="field"><label>Data</label><select id="c-provider"><option value="synthetic">synthetic (offline)</option><option value="yfinance">yfinance (free, live)</option></select></div>
+      <div class="field"><label>&nbsp;</label><button class="btn primary" id="btn-convene">Convene the Council</button></div>
+    </div>
+
+    <div class="stagebar" id="stagebar"></div>
+
+    <div class="card" id="council-brief">
+      <div class="card-head"><h2 id="brief-title">The desk</h2><span class="pill" id="brief-pill">idle</span></div>
+      <div class="sub">The quant desk builds the book, the Red Team attacks it, the CIO proposes how much to deploy. Then the council votes.</div>
+      <div id="brief-body"><div class="empty">Press <b>Convene the Council</b>.</div></div>
+    </div>
+
+    <div class="section-title">The council</div>
+    <div id="council-resolution"></div>
+    <div class="seats" id="seats"></div>
+
+    <div class="section-title">Where the money went</div>
+    <div class="card"><div class="table-wrap" id="council-book"><div class="empty">The book appears once the council has voted.</div></div></div>
+  </section>
+
+  <section class="view" id="view-research">
+    <div class="filters" id="research-filters">
+      <div class="field"><label>Mandate</label><select id="f-fund"></select></div>
+      <div class="field grow"><label>Universe</label><input id="f-tickers" value="AAPL,MSFT,NVDA,GOOGL,AMZN,JPM,UNH,XOM,PG,CAT"></div>
+      <div class="field"><label>Start</label><input id="f-start" type="date" value="2024-01-01"></div>
+      <div class="field"><label>End</label><input id="f-end" type="date" value="2025-06-30"></div>
+      <div class="field"><label>Data</label><select id="f-provider"><option value="synthetic">synthetic (offline)</option><option value="yfinance">yfinance (free, live)</option></select></div>
+      <div class="field"><label>Model</label><select id="f-model"></select></div>
+      <div class="field"><label>&nbsp;</label><button class="btn primary" id="btn-backtest">Convene &amp; backtest</button></div>
+    </div>
+    <div class="progress hidden" id="bt-progress"><i style="width:0%"></i></div>
+    <div class="status-line" id="bt-status"></div>
+    <div id="bt-warning" class="callout warn hidden"></div>
+
+    <div id="research-empty" class="card"><div class="empty">Pick a mandate and a universe, then convene the committee. The equity curve draws as each meeting concludes.</div></div>
+
+    <div id="research-body" class="hidden">
+      <div class="tiles" id="tiles"></div>
+
+      <div class="section-title">Equity</div>
+      <div class="grid two wide-left">
+        <div class="card">
+          <div class="card-head"><h2>Fund vs benchmark</h2><div class="chart-actions" id="eq-actions"></div></div>
+          <div class="sub" id="eq-sub"></div>
+          <div class="chart" id="eq-chart"></div>
+          <div class="legend" id="eq-legend"></div>
+        </div>
+        <div class="card">
+          <h2>Walk-forward</h2>
+          <div class="sub">First half in-sample, second half out-of-sample (re-based). If they disagree, distrust the whole.</div>
+          <div id="wf-table"></div>
+        </div>
+      </div>
+
+      <div class="section-title">Risk over time</div>
+      <div class="grid three">
+        <div class="card"><div class="card-head"><h3>Drawdown</h3><div class="chart-actions" id="dd-actions"></div></div><div class="chart" id="dd-chart"></div></div>
+        <div class="card"><div class="card-head"><h3>Exposure — gross &amp; net</h3><div class="chart-actions" id="ex-actions"></div></div><div class="chart" id="ex-chart"></div><div class="legend" id="ex-legend"></div></div>
+        <div class="card"><div class="card-head"><h3>Rolling Sharpe</h3><div class="chart-actions" id="rs-actions"></div></div><div class="chart" id="rs-chart"></div></div>
+      </div>
+
+      <div class="section-title">How lucky was this?</div>
+      <div class="grid two wide-left">
+        <div class="card">
+          <div class="card-head"><h2>Monte Carlo — bootstrapped histories</h2><div class="chart-actions" id="mc-actions"></div></div>
+          <div class="sub" id="mc-sub"></div>
+          <div class="chart" id="mc-chart"></div>
+          <div class="legend" id="mc-legend"></div>
+        </div>
+        <div class="card"><h2>Full statistics</h2><div class="table-wrap" id="metrics-table"></div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= COMMITTEE ================= -->
+  <section class="view" id="view-committee">
+    <div id="committee-empty" class="card"><div class="empty">Run a backtest or a paper cycle; every meeting's transcript lands here — scrub through time to see what the committee saw, argued, and decided.</div></div>
+    <div id="committee-body" class="hidden">
+      <div class="card">
+        <div class="scrub">
+          <span class="muted" style="font-size:12px">meeting</span>
+          <input type="range" id="scrub" min="0" max="0" value="0">
+          <span class="mono" id="scrub-date"></span>
+          <button class="btn small" id="scrub-prev">‹</button><button class="btn small" id="scrub-next">›</button>
+        </div>
+      </div>
+      <div class="grid two wide-left" style="margin-top:14px;">
+        <div class="card">
+          <div class="card-head"><h2 id="cio-title">CIO memo</h2><span class="pill" id="cio-source"></span></div>
+          <div class="memo" id="cio-memo"></div>
+          <div class="kv" id="cio-kv"></div>
+        </div>
+        <div class="card">
+          <h2>Red Team</h2>
+          <div class="sub">The adversary's strongest objection to each consensus position, and the haircut it earned.</div>
+          <div id="redteam"></div>
+        </div>
+      </div>
+      <div class="section-title">The board</div>
+      <div class="card" id="board-card">
+        <div class="card-head"><h2>Investment board</h2><span class="pill" id="board-source"></span></div>
+        <div class="sub" id="board-sub">Fund-manager archetypes vote on the CIO's proposal. The resolution is the median vote, capped within ±35% of what the CIO asked for.</div>
+        <div id="board-resolution"></div>
+        <div class="roster" id="board-votes"></div>
+      </div>
+
+      <div class="section-title">Analyst views</div>
+      <div class="card">
+        <div class="table-wrap" id="views-table"></div>
+      </div>
+      <div class="section-title">From conviction to book</div>
+      <div class="grid two">
+        <div class="card"><h3>Final convictions → weights</h3><div class="table-wrap" id="weights-table"></div></div>
+        <div class="card"><h3>Orders &amp; fills</h3><div class="table-wrap" id="orders-table"></div><h3 style="margin-top:14px">Risk events</h3><div id="risk-events"></div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= RISK & BOOK ================= -->
+  <section class="view" id="view-risk">
+    <div id="risk-empty" class="card"><div class="empty">The book and its risk profile appear after a run.</div></div>
+    <div id="risk-body" class="hidden">
+      <div class="tiles" id="risk-tiles"></div>
+      <div class="grid two" style="margin-top:14px">
+        <div class="card"><div class="card-head"><h2>Positions</h2><span class="muted" id="book-date"></span></div><div class="table-wrap" id="positions-table"></div></div>
+        <div class="card"><h2>Sector exposure</h2><div class="sub">Gross weight by sector against the mandate's cap.</div><div class="chart" id="sector-chart"></div></div>
+      </div>
+      <div class="section-title">Limits fired</div>
+      <div class="card"><div class="table-wrap" id="limits-table"></div></div>
+    </div>
+  </section>
+
+  <!-- ================= PAPER ================= -->
+  <section class="view" id="view-paper">
+    <div class="filters">
+      <div class="field"><label>Mandate</label><select id="p-fund"></select></div>
+      <div class="field grow"><label>Universe</label><input id="p-tickers" value="AAPL,MSFT,NVDA,GOOGL,AMZN,JPM,UNH,XOM,PG,CAT"></div>
+      <div class="field"><label>As of</label><input id="p-date" type="date"></div>
+      <div class="field"><label>Data</label><select id="p-provider"><option value="synthetic">synthetic (offline)</option><option value="yfinance">yfinance (free, live)</option></select></div>
+      <div class="field"><label>&nbsp;</label><button class="btn primary" id="btn-run">Run one cycle</button></div>
+      <div class="field"><label>&nbsp;</label><button class="btn danger small" id="btn-reset">reset book</button></div>
+    </div>
+    <div class="status-line" id="run-status"></div>
+    <div class="grid two wide-left">
+      <div class="card">
+        <div class="card-head"><h2>Paper NAV — carried across runs</h2></div>
+        <div class="sub">Each cycle starts from the previous cycle's positions and cash. This is a track record, not a reset.</div>
+        <div class="chart" id="paper-chart"></div>
+      </div>
+      <div class="card"><h2>Current book</h2><div id="paper-book"></div></div>
+    </div>
+    <div class="section-title">Meetings</div>
+    <div class="card"><div class="table-wrap" id="paper-cycles"></div></div>
+  </section>
+
+  <!-- ================= MANDATES ================= -->
+  <section class="view" id="view-mandates">
+    <div class="grid two wide-right">
+      <div>
+        <div class="card"><div class="card-head"><h2>Mandates</h2><button class="btn small" id="btn-new-fund">+ new</button></div><div class="fund-list" id="fund-list" style="margin-top:10px"></div></div>
+        <div class="card" style="margin-top:14px"><h2>Analyst roster</h2><div class="sub">Staff any of these into a pod. LLM personas need a configured model; quant analysts never do.</div><div class="roster" id="roster"></div></div>
+      </div>
+      <div class="card">
+        <div class="card-head"><h2 id="mandate-title">Mandate</h2><div><button class="btn small" id="btn-save-fund">save</button> <button class="btn small danger" id="btn-delete-fund">delete</button></div></div>
+        <div class="sub">The mandate is the desk: pods, staff, committee rules, sizing, risk, costs. It never names tickers.</div>
+        <textarea class="yaml" id="mandate-yaml" spellcheck="false"></textarea>
+        <div class="status-line" id="mandate-status"></div>
+      </div>
+    </div>
+  </section>
+</main>
+<footer>Educational research software. Nothing here is investment advice; the LLM never touches a trade, and the backtest is only as honest as its data.</footer>
+<script src="/static/app.js"></script>
+</body>
+</html>

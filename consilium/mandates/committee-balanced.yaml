@@ -1,0 +1,68 @@
+# The flagship: a full investment committee.
+# Two discretionary pods staffed with LLM personas (one of them a dedicated
+# short seller), one systematic pod, a Red Team that attacks the consensus, and
+# a CIO that sets exposure from regime. Without an LLM key every LLM analyst
+# abstains and the committee degrades to the systematic pod + rules-based
+# Red Team / CIO — it still runs.
+name: committee-balanced
+description: Full committee — quality owners, contrarians, a short seller, and a systematic trend pod, chaired by a CIO.
+strategies:
+  - name: quality-owners
+    display_name: Quality Owners
+    weight: 0.35
+    analysts:
+      - name: owner
+        weight: 1.5
+      - name: catalyst
+      - name: value_quality
+  - name: contrarians
+    display_name: Contrarians & Shorts
+    weight: 0.25
+    analysts:
+      - name: skeptic
+      - name: bear
+        weight: 1.5
+    blend:
+      market_neutral: true
+  - name: systematic
+    display_name: Systematic Trend
+    weight: 0.40
+    analysts:
+      - name: trend
+      - name: lowvol
+        weight: 0.6
+      - name: macro
+committee:
+  red_team: true
+  cio: true
+  red_team_top_n: 4
+  max_haircut: 0.6
+  board: true               # an investment board votes on the CIO's proposal
+  board_members:            # each seat can name its own model (see multi-model-board.yaml)
+    - name: macro
+    - name: risk_budgeter
+    - name: concentrator
+    - name: systematizer
+    - name: preserver
+portfolio:
+  sizing: vol_scaled
+  reference_vol: 0.20
+  min_conviction: 0.10
+  rebalance_band: 0.015
+  max_names: 12
+risk:
+  max_position_pct: 0.15
+  max_gross_exposure: 1.0
+  max_net_exposure: 1.0
+  min_net_exposure: -0.3
+  max_sector_pct: 0.40
+  portfolio_vol_target: 0.16
+  drawdown_soft: 0.10
+  drawdown_hard: 0.20
+costs:
+  commission_bps: 1
+  slippage_bps: 5
+  half_spread_bps: 2
+capital: 100000
+rebalance: weekly
+benchmark: SPY

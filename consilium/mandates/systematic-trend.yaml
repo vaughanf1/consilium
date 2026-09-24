@@ -1,0 +1,40 @@
+# Pure quant. No LLM, no keys, fully point-in-time on any provider.
+# Trend with a low-vol overlay and a small reversal sleeve for timing.
+name: systematic-trend
+description: Keyless systematic fund — trend following with a defensive overlay and a reversal timing sleeve.
+strategies:
+  - name: trend
+    display_name: Trend
+    weight: 0.6
+    analysts:
+      - name: trend
+  - name: defensive
+    display_name: Defensive Overlay
+    weight: 0.3
+    analysts:
+      - name: lowvol
+  - name: timing
+    display_name: Reversal Timing
+    weight: 0.1
+    analysts:
+      - name: meanrev
+committee:
+  red_team: true
+  cio: true
+  use_llm: false
+portfolio:
+  sizing: vol_scaled
+  reference_vol: 0.18
+  min_conviction: 0.08
+  rebalance_band: 0.02
+risk:
+  max_position_pct: 0.20
+  max_gross_exposure: 1.0
+  min_net_exposure: -0.5
+  max_sector_pct: 0.45
+  portfolio_vol_target: 0.14
+  drawdown_soft: 0.08
+  drawdown_hard: 0.18
+capital: 100000
+rebalance: weekly
+benchmark: SPY

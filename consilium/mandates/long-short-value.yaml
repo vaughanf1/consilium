@@ -1,0 +1,36 @@
+# A market-neutral discretionary book: the committee ranks the universe and the
+# sleeve goes long the names it likes most relative to the rest, short the rest.
+name: long-short-value
+description: Dollar-neutral value book — the Owner, the Skeptic and the Short Seller rank names against each other.
+strategies:
+  - name: ranked-value
+    display_name: Ranked Value L/S
+    weight: 1.0
+    analysts:
+      - name: owner
+      - name: skeptic
+        weight: 1.5
+      - name: bear
+      - name: value_quality
+    blend:
+      market_neutral: true
+      gross_target: 1.4
+committee:
+  red_team: true
+  cio: true
+  red_team_top_n: 6
+portfolio:
+  sizing: vol_scaled
+  min_conviction: 0.05
+  rebalance_band: 0.02
+risk:
+  max_position_pct: 0.12
+  max_gross_exposure: 1.5
+  max_net_exposure: 0.2
+  min_net_exposure: -0.2
+  max_sector_pct: 0.5
+  drawdown_soft: 0.08
+  drawdown_hard: 0.15
+capital: 250000
+rebalance: biweekly
+benchmark: SPY
