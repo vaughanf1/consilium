@@ -202,6 +202,24 @@
   const STAGES = [["data", "Market data"], ["analysts", "Analysts"], ["red_team", "Red Team"],
                   ["cio", "CIO"], ["board", "The Council"]];
 
+  function paintBudget(b) {
+    const pill = $("#budget-pill");
+    if (!b || !b.enabled || !b.measured) { pill.classList.add("hidden"); return; }
+    pill.classList.remove("hidden");
+    const out = !b.allow_llm;
+    pill.innerHTML = `<span class="dot"></span>demo budget ${out ? "spent" : `$${b.spent_usd.toFixed(2)} / $${b.cap_usd.toFixed(2)}`}`;
+    pill.style.borderColor = out ? "var(--warn)" : "";
+    pill.style.color = out ? "var(--warn)" : "";
+    return out;
+  }
+
+  function budgetNotice(b) {
+    if (!b || b.allow_llm !== false) return "";
+    return `<div class="callout warn" style="margin-bottom:12px">Today's demo budget is spent, so the council is sitting on its
+      <b>rule-based fallback</b> instead of paid models — every seat still votes, and the numbers are still real.
+      It resets at midnight UTC. Run it locally with your own key for the full multi-model council.</div>`;
+  }
+
   function paintStages(state) {
     $("#stagebar").innerHTML = STAGES.map(([k, label]) =>
       `<div class="st ${state[k] || ""}" data-st="${k}"><span class="dot"></span>${label}</div>`).join("");
@@ -240,7 +258,11 @@
     let seats = [], votes = {};
 
     const handle = (m) => {
-      if (m.type === "stage") {
+      if (m.type === "convened") {
+        paintBudget(m.budget);
+        const n = budgetNotice(m.budget);
+        if (n) $("#brief-body").innerHTML = n;
+      } else if (m.type === "stage") {
         state[m.name] = m.state; paintStages(state);
         const d = m.detail || {};
         if (m.name === "analysts" && m.state === "done") {
@@ -655,6 +677,11 @@
       const pill = $("#llm-pill");
       pill.classList.toggle("ok", state.meta.llm_available);
       $("#llm-text").textContent = state.meta.llm_available ? `model ${state.meta.current_model}` : `no LLM key — quant + rules only`;
+      paintBudget(state.meta.budget);
+      if (state.meta.budget && state.meta.budget.allow_llm === false) {
+        const n = document.createElement("div"); n.innerHTML = budgetNotice(state.meta.budget);
+        $("#view-council").insertBefore(n.firstChild, $("#view-council").firstChild);
+      }
       if (state.meta.serverless && state.meta.llm_available) { const h = document.createElement("div"); h.className = "callout"; h.style.marginBottom = "14px"; h.textContent = "LLM committee on the hosted demo: each backtest must finish inside the 5-minute function limit — keep to ~6 tickers and ~1 year, or run locally for long studies." + (state.meta.durable ? "" : " The prompt cache here is warm-instance only, so repeated runs may re-spend."); $("#research-filters").insertAdjacentElement("afterend", h); }
       if (state.meta.serverless && !state.meta.durable) { const n = document.createElement("div"); n.className = "callout"; n.style.marginBottom = "14px"; n.textContent = "Hosted demo: this instance has no persistent disk — the paper ledger and saved mandates live only while the instance is warm. Run locally for a permanent track record."; $("#view-paper").insertBefore(n, $("#view-paper").firstChild); }
       $("#f-model").innerHTML = `<option value="">default (${state.meta.current_model})</option>` + state.meta.models.map((m) => `<option value="${m.id}" ${m.configured ? "" : "disabled"}>${m.display}${m.configured ? "" : " — key missing"}</option>`).join("");

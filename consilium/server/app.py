@@ -27,6 +27,7 @@ from consilium.core.spec import FundSpec, dump_spec, load_spec
 from consilium.data import make_provider
 from consilium.ledger import Ledger
 from consilium.llm import current_model, list_models, llm_available
+from consilium.server.guard import SpendGuard
 from consilium.server.jobs import JobRunner
 from consilium.storage import blob_store
 
@@ -80,17 +81,21 @@ def create_app() -> FastAPI:
     app = FastAPI(title="Consilium", version=__version__)
     jobs = JobRunner()
     ledger = Ledger()
+    # A hosted demo hands a key to the internet. Cap the day's spend; past it the
+    # committee degrades to its rule versions instead of the page breaking.
+    guard = SpendGuard()
 
     @app.get("/api/health")
     def health():
         return {"ok": True, "version": __version__, "model": current_model(), "llm_available": llm_available(),
-                "home": str(MANDATES_DIR.parent), "serverless": SERVERLESS, "durable": blob_store() is not None}
+                "home": str(MANDATES_DIR.parent), "serverless": SERVERLESS, "durable": blob_store() is not None,
+                "budget": guard.status()}
 
     @app.get("/api/meta")
     def meta():
         return {"analysts": describe_analysts(), "models": list_models(), "current_model": current_model(),
                 "llm_available": llm_available(), "providers": ["synthetic", "yfinance"], "serverless": SERVERLESS,
-                "durable": blob_store() is not None}
+                "durable": blob_store() is not None, "budget": guard.status()}
 
     # mandates -----------------------------------------------------------
     @app.get("/api/funds")
@@ -137,6 +142,7 @@ def create_app() -> FastAPI:
         from consilium.backtest import backtest_fund
         from consilium.core.spec import Fund, normalize_universe
         spec = load_spec(_mandate_path(req.fund))
+        budget = guard.apply(spec)
         universe = normalize_universe(req.tickers)
         end = req.end or (_date.today().isoformat() if req.provider != "synthetic" else "2025-06-30")
         start = req.start or (_date.fromisoformat(end) - timedelta(weeks=req.weeks)).isoformat()
@@ -169,7 +175,8 @@ def create_app() -> FastAPI:
                 q.put(None)
 
             threading.Thread(target=work, daemon=True).start()
-            yield json.dumps({"type": "start", "fund": spec.name, "start": start, "end": end, "universe": universe}) + "\n"
+            yield json.dumps({"type": "start", "fund": spec.name, "start": start, "end": end,
+                              "universe": universe, "budget": budget}) + "\n"
             while True:
                 try:
                     item = q.get(timeout=15)
@@ -192,6 +199,7 @@ def create_app() -> FastAPI:
         from consilium.execution import SimBroker
         from consilium.pipeline import CycleContext, run_cycle
         spec = load_spec(_mandate_path(req.fund))
+        budget = guard.apply(spec)
         universe = normalize_universe(req.tickers)
         as_of = req.date or (_date.today().isoformat() if req.provider != "synthetic" else "2025-06-30")
 
@@ -222,7 +230,7 @@ def create_app() -> FastAPI:
 
             threading.Thread(target=work, daemon=True).start()
             yield json.dumps({"type": "convened", "fund": spec.name, "as_of": as_of,
-                              "universe": universe}) + "\n"
+                              "universe": universe, "budget": budget}) + "\n"
             while True:
                 try:
                     item = q.get(timeout=15)
@@ -242,6 +250,7 @@ def create_app() -> FastAPI:
         from consilium.backtest import backtest_fund
         from consilium.core.spec import Fund, normalize_universe
         spec = load_spec(_mandate_path(req.fund))
+        guard.apply(spec)
         universe = normalize_universe(req.tickers)
         end = req.end or (_date.today().isoformat() if req.provider != "synthetic" else "2025-06-30")
         start = req.start or (_date.fromisoformat(end) - timedelta(weeks=req.weeks)).isoformat()
@@ -279,6 +288,7 @@ def create_app() -> FastAPI:
         from consilium.execution import SimBroker
         from consilium.pipeline import CycleContext, run_cycle
         spec = load_spec(_mandate_path(req.fund))
+        guard.apply(spec)
         universe = normalize_universe(req.tickers)
         as_of = req.date or (_date.today().isoformat() if req.provider != "synthetic" else "2025-06-30")
 
