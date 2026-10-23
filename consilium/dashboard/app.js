@@ -402,7 +402,8 @@
     $("#committee-empty").classList.add("hidden"); $("#committee-body").classList.remove("hidden");
     $("#risk-empty").classList.add("hidden"); $("#risk-body").classList.remove("hidden");
     const w = $("#bt-warning"); w.classList.remove("err");
-    if (res.point_in_time_warning) { w.textContent = `⚠ ${res.point_in_time_warning}`; w.classList.remove("hidden"); } else w.classList.add("hidden");
+    const warns = [res.point_in_time_warning, res.survivorship_warning].filter(Boolean);
+    if (warns.length) { w.textContent = warns.map((x) => `⚠ ${x}`).join("\n"); w.style.whiteSpace = "pre-line"; w.classList.remove("hidden"); } else w.classList.add("hidden");
     const staffedLLM = res.records[0] && res.records[0].strategies.some((s) => s.views.some((v) => (state.meta?.analysts || []).find((a) => a.name === v.analyst)?.kind === "llm"));
     $("#bt-status").innerHTML = `${res.fund} · ${res.start} → ${res.end} · ${res.metrics.n_periods} meetings · ${res.provider}` +
       (staffedLLM && !res.llm_used ? ` · <span class="warn">LLM personas abstained (no key configured) — committee ran on quant analysts + rules</span>` : res.llm_used ? ` · model ${esc(res.model || state.meta?.current_model || "")}` : "");

@@ -19,7 +19,7 @@ from consilium.core.models import CycleRecord, Fill, TickerSkip
 from consilium.core.spec import Fund, normalize_universe
 from consilium.data.features import PriceBook
 from consilium.execution.broker import Broker, build_orders
-from consilium.portfolio.construction import apply_rebalance_band, size_book
+from consilium.portfolio.construction import apply_exit_only, apply_rebalance_band, size_book
 from consilium.risk.correlation import CORR_LOOKBACK, estimate_correlation
 from consilium.risk.limits import apply_limits
 
@@ -61,6 +61,20 @@ def run_cycle(ctx: CycleContext, as_of: str, broker: Broker, universe: list[str]
             skipped.append(TickerSkip(ticker=t, reason="no recent price"))
     tradeable = [t for t in universe if t in marks]
 
+    # --- index membership ---------------------------------------------
+    # Without a membership file the universe is taken as given. With one, a
+    # name that was not in the index on this date is not tradeable — unless
+    # we hold it, in which case the committee may still sell it (exit-only).
+    departed: set[str] = set()
+    membership = ctx.fund.membership
+    if membership is not None:
+        for t in [t for t in tradeable if not membership.is_member(t, as_of)]:
+            if t in held:
+                departed.add(t)
+            else:
+                skipped.append(TickerSkip(ticker=t, reason=f"not an index member as of {as_of}"))
+        tradeable = [t for t in tradeable if t in departed or membership.is_member(t, as_of)]
+
     cash_before = broker.cash()
     equity_before = cash_before + sum(p.shares * marks[t] for t, p in held.items())
     if equity_before <= 0:
@@ -78,7 +92,8 @@ def run_cycle(ctx: CycleContext, as_of: str, broker: Broker, universe: list[str]
     gross_target = sum(s.weight * s.blend.gross_target for s, _ in ctx.fund.strategies) / sum(s.weight for s, _ in ctx.fund.strategies)
     sizing = size_book(verdict.convictions, vols, spec.portfolio, gross_target, verdict.exposure_multiplier)
     current_w = {t: p.shares * marks[t] / equity_before for t, p in held.items()}
-    targets = apply_rebalance_band(sizing.weights, current_w, spec.portfolio.rebalance_band)
+    sized, exit_events = apply_exit_only(sizing.weights, current_w, departed)
+    targets = apply_rebalance_band(sized, current_w, spec.portfolio.rebalance_band)
 
     # --- risk ----------------------------------------------------------
     sectors = {t: ctx.sector(t) for t in set(targets) | set(held)}
@@ -101,7 +116,7 @@ def run_cycle(ctx: CycleContext, as_of: str, broker: Broker, universe: list[str]
     return CycleRecord(
         id=uuid.uuid4().hex[:12], fund=spec.name, as_of=as_of, universe=universe, marks=marks,
         sectors={t: sectors.get(t, "Unknown") for t in tradeable}, skipped=skipped,
-        strategies=strategy_records, verdict=verdict, target_weights=targets, risk_events=risk.events,
+        strategies=strategy_records, verdict=verdict, target_weights=targets, risk_events=exit_events + risk.events,
         final_weights=risk.weights, equity_before=equity_before, cash_before=cash_before,
         orders=orders, fills=fills, positions=positions_after, cash=cash_after, nav=nav,
         costs=costs, turnover=traded / equity_before if equity_before else 0.0, drawdown=drawdown,

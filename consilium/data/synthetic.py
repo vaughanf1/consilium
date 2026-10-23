@@ -37,6 +37,7 @@ def _seed(ticker: str, salt: str = "") -> int:
 class SyntheticProvider:
     name = "synthetic"
     point_in_time = True  # the synthetic world has no filing lag by construction
+    survivorship_free = True  # nor any delistings: every name it invents trades for the whole history
 
     def __init__(self) -> None:
         self._paths: dict[str, tuple[list[_date], np.ndarray, np.ndarray, np.ndarray, np.ndarray]] = {}

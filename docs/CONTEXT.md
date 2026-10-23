@@ -300,3 +300,38 @@ measured. The cause of the difference was not investigated in this session.
 Use the figures in this section for anything reproduced from the current code.
 
 Tests: 64 (51 existing, all still passing, plus 13 in `tests/test_correlation.py`).
+
+---
+
+## 14. Measured numbers — 23 October 2026: historical universe membership (Workstream 2)
+
+**What changed.** A backtest or paper run can take a membership file: a CSV of
+`ticker,start_date,end_date` spells (blank end = still a member; a ticker may
+have several spells). Pass it with `--membership file.csv`, or set
+`membership:` in the mandate (a relative path resolves against the YAML).
+On each meeting date only names that were members that day are tradeable.
+Others are skipped with the reason `not an index member as of <date>`. A held
+name that leaves the index stays in the committee and may be sold, but its
+target can never grow or flip side. Each time that bites, an `index_exit_only`
+risk event is logged, and what it withholds stays in cash. With
+`--membership` and no `--tickers`, the universe is every name the file has
+ever held.
+
+**The survivorship warning is new, not preserved.** Before this change the
+code printed no survivorship warning at all. Now every backtest without a
+membership file carries one (`survivorship_warning` in the result, in the CLI
+report, and in the dashboard's Research callout). The one exception is the
+synthetic provider: it invents its names and never delists any, so there are
+no survivors for it to be biased by.
+
+**Shipped without a membership file.** The repo does not include real index
+history; supplying one is up to the user.
+
+| Run | Return | Sharpe | Max DD | Final NAV | Survivorship warning |
+|---|---|---|---|---|---|
+| `consilium demo` (no membership) | +17.8% | 1.09 | 5.9% | $117,847.80 | none (synthetic) |
+
+The demo is unchanged to the dollar from §13: no membership file means no
+change in behaviour.
+
+Tests: 73 (64 before + 9 in `tests/test_membership.py`).

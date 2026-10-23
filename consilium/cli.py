@@ -60,6 +60,10 @@ def _print_metrics(res) -> None:
     console.print(t)
     if res.point_in_time_warning:
         console.print(f"[yellow]⚠ {res.point_in_time_warning}[/]")
+    if res.survivorship_warning:
+        console.print(f"[yellow]⚠ {res.survivorship_warning}[/]")
+    elif res.membership:
+        console.print(f"[dim]universe filtered by index membership as of each meeting ({res.membership})[/]")
     from consilium.analysts import ANALYST_REGISTRY
     staffed_llm = res.records and any(ANALYST_REGISTRY[v.analyst].kind == "llm"
                                       for s in res.records[0].strategies for v in s.views)
@@ -103,15 +107,25 @@ def _confirm_spend(spec, universe, start, end, args) -> bool:
     return False
 
 
+def _fund_and_universe(args):
+    """The mandate, its membership (--membership beats the mandate's own), and the
+    universe — which defaults to every name the membership file has ever held."""
+    from consilium.core.spec import Fund, load_spec, normalize_universe
+    from consilium.data.membership import Membership
+    spec = load_spec(_resolve_mandate(args.mandate))
+    membership = Membership.from_csv(args.membership) if getattr(args, "membership", None) else None
+    fund = Fund(spec, model=args.model, membership=membership)
+    if not args.tickers and fund.membership is not None:
+        return spec, fund, fund.membership.tickers
+    return spec, fund, normalize_universe(args.tickers)
+
+
 def cmd_backtest(args) -> None:
     from consilium.backtest import backtest_fund
-    from consilium.core.spec import Fund, load_spec, normalize_universe
     from consilium.data import make_provider
     from consilium.ledger import Ledger
 
-    spec = load_spec(_resolve_mandate(args.mandate))
-    fund = Fund(spec, model=args.model)
-    universe = normalize_universe(args.tickers)
+    spec, fund, universe = _fund_and_universe(args)
     end = args.end or _date.today().isoformat()
     start = args.start or (_date.fromisoformat(end) - timedelta(weeks=args.weeks)).isoformat()
     if not _confirm_spend(spec, universe, start, end, args):
@@ -144,16 +158,13 @@ def cmd_demo(args) -> None:
 
 def cmd_run(args) -> None:
     from consilium.committee import Committee
-    from consilium.core.spec import Fund, load_spec, normalize_universe
     from consilium.data import make_provider
     from consilium.data.features import PriceBook
     from consilium.execution import SimBroker
     from consilium.ledger import Ledger
     from consilium.pipeline import CycleContext, run_cycle
 
-    spec = load_spec(_resolve_mandate(args.mandate))
-    fund = Fund(spec, model=args.model)
-    universe = normalize_universe(args.tickers)
+    spec, fund, universe = _fund_and_universe(args)
     as_of = args.date or _date.today().isoformat()
     provider = make_provider(args.provider)
     ledger = Ledger()
@@ -234,6 +245,8 @@ def main(argv=None) -> None:
         sp.add_argument("--provider", default="auto", help="synthetic | yfinance (default auto → yfinance)")
         sp.add_argument("--model", help="LLM for the personas, e.g. claude-sonnet-5 or ollama:llama3.1")
         sp.add_argument("--json", action="store_true", help="print the full JSON to stdout")
+        sp.add_argument("--membership", help="CSV of index membership spells (ticker,start_date,end_date); "
+                                             "fixes survivorship bias. Overrides the mandate's own")
 
     bt = sub.add_parser("backtest", help="backtest a mandate over history"); common(bt)
     bt.add_argument("--start"); bt.add_argument("--end"); bt.add_argument("--weeks", type=int, default=78); bt.add_argument("--out")
@@ -261,8 +274,8 @@ def main(argv=None) -> None:
     args = p.parse_args(argv)
     if getattr(args, "model", None):
         os.environ["CONSILIUM_MODEL"] = args.model
-    if args.cmd in ("backtest", "run") and not args.tickers:
-        p.error("--tickers is required (a mandate carries no watchlist)")
+    if args.cmd in ("backtest", "run") and not args.tickers and not args.membership:
+        p.error("--tickers is required (a mandate carries no watchlist) unless --membership supplies the names")
     args.fn(args)
 
 
