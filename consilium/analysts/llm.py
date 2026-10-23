@@ -10,6 +10,10 @@ Contract:
 - Every call is cached by exact prompt; the market context is rendered as
   coarse buckets so the prompt (and cache key) only changes when the
   fundamentals or the regime change.
+- Reflection (mandate opt-in): the persona is shown its own record — a
+  deterministic summary from the scorekeeper. It is context, not authority:
+  the view it returns is blended exactly like any other. It is part of the
+  prompt, so it is part of the cache key.
 """
 
 from __future__ import annotations
@@ -71,6 +75,8 @@ class LLMAnalyst(Analyst):
             parts.append(f"Company: {p.name if p and p.name else ticker} ({ticker}). No fundamentals available.")
         if self.sees_market and m is not None:
             parts.append(m.render_coarse())
+        if ctx.reflection.get(self.name):
+            parts.append(ctx.reflection[self.name])
         return "\n\n".join(parts)
 
     def view(self, ticker: str, ctx: AnalysisContext) -> View:

@@ -513,6 +513,7 @@
       html += `<div style="margin:6px 0 4px"><span class="muted" style="font-size:12px">pod blend:</span> ${pod}</div>`;
     });
     $("#views-table").innerHTML = html;
+    renderTrack(rec);
 
     const tickers = Array.from(new Set([...Object.keys(v.convictions), ...Object.keys(rec.final_weights), ...Object.keys(rec.positions)])).sort();
     $("#weights-table").innerHTML = `<table><tr><th>ticker</th><th>sector</th><th class="num">final conviction</th><th class="num">target w</th><th class="num">after risk</th><th class="num">shares</th></tr>` +
@@ -521,6 +522,24 @@
     $("#orders-table").innerHTML = rec.fills.length ? `<table><tr><th>side</th><th>ticker</th><th class="num">qty</th><th class="num">ref</th><th class="num">fill</th><th class="num">cost</th></tr>` +
       rec.fills.map((f, i) => `<tr><td class="${f.side === "buy" ? "gain" : "loss"}">${f.side}</td><td class="mono">${f.ticker}</td><td class="num">${f.quantity}</td><td class="num">${fmt.num(rec.orders[i]?.reference_price)}</td><td class="num">${fmt.num(f.price)}</td><td class="num">${fmt.money(f.commission + f.slippage_cost)}</td></tr>`).join("") + `</table>` : `<div class="empty">no trades — the book was inside its no-trade band</div>`;
     $("#risk-events").innerHTML = rec.risk_events.length ? rec.risk_events.map((e) => `<div class="note"><div class="head"><span>${e.limit}${e.ticker ? ` · ${e.ticker}` : ""}</span><span class="num">${fmt.num(e.before)} → ${fmt.num(e.after)}</span></div>${e.note ? `<div class="body">${esc(e.note)}</div>` : ""}</div>`).join("") : `<div class="muted" style="font-size:13px">no limits fired</div>`;
+  }
+
+  function renderTrack(rec) {
+    const scores = Object.values(rec.track_record || {}), applied = rec.reliability || {};
+    const on = Object.keys(applied).length > 0;
+    $("#track-note").textContent = on ? "This mandate applies it to the blend." : "This mandate does not apply it — shown for information.";
+    if (!scores.length) { $("#track-table").innerHTML = `<div class="empty">no track record in this record</div>`; return; }
+    const rows = scores.sort((a, b) => (b.n - a.n) || a.analyst.localeCompare(b.analyst));
+    $("#track-table").innerHTML = `<table><tr><th>analyst</th><th class="num">calls scored</th><th class="num">hit rate</th><th class="num">avg contribution</th><th class="num">pending</th><th class="num">reliability</th></tr>` +
+      rows.map((s) => {
+        const f = on ? applied[s.analyst] : s.reliability;
+        const tone = f > 1.0001 ? "gain" : f < 0.9999 ? "loss" : "";
+        return `<tr><td>${esc(analystDisplay(s.analyst))}</td><td class="num">${s.n}</td>
+          <td class="num">${s.hit_rate == null ? "–" : fmt.pct0(s.hit_rate, 0)}</td>
+          <td class="num">${s.avg_contribution == null ? "–" : fmt.pct(s.avg_contribution, 2)}</td>
+          <td class="num">${s.pending}</td>
+          <td class="num ${on ? tone : "muted"}">×${f.toFixed(2)}${on ? "" : " (off)"}</td></tr>`;
+      }).join("") + `</table>`;
   }
 
   function renderBoard(v) {

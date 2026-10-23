@@ -335,3 +335,59 @@ The demo is unchanged to the dollar from §13: no membership file means no
 change in behaviour.
 
 Tests: 73 (64 before + 9 in `tests/test_membership.py`).
+
+---
+
+## 15. Measured numbers — 23 October 2026: analyst track records and reflection (Workstream 3)
+
+**What changed.** Three bounded pieces, all off by default except the scorecard.
+
+1. **Scorekeeper** (`consilium/committee/scorekeeper.py`, deterministic). Each
+   directional view (|conviction| ≥ 0.1, not abstained) is a call. A call is
+   scored once its horizon has run (horizon in trading days × 365/252, in
+   calendar days). The entry is the mark at the meeting that heard it; the exit
+   is the mark at the first meeting on or after the due date. A **hit** is a
+   sign match; the **contribution** is conviction × realised return. Every
+   CycleRecord now carries `track_record`: each analyst's score going into that
+   meeting, using nothing that meeting could not have known. It is shown in the
+   Committee tab as a scorecard that scrubs with the meeting slider.
+2. **Reliability weighting** (`committee.track_record_weighting`, default
+   off). In the blend, each analyst's mandate weight is multiplied by
+   clip(p̂ / 0.5, 0.5, 1.5), where p̂ = (hits + 10) / (n + 20). In words: the
+   prior is 20 coin-flip calls, so an analyst can lose half its voice or gain
+   half, never more. The applied factors are logged in the record's
+   `reliability` field (empty when off).
+3. **Reflection** (`committee.reflection`, default off). Each LLM analyst's
+   prompt gets a deterministic summary of its own last 10 scored calls and its
+   worst recent miss (ticker, date, stance, thesis, outcome). It is part of the
+   prompt, so it is part of the cache key. It grants no authority: the view
+   that comes back is blended like any other.
+
+Paper runs (`consilium run`, the dashboard's run and council) replay the
+fund's ledger into the scorekeeper. They do this only when the mandate opts in,
+because replaying every past meeting is not free.
+
+| Run (`consilium demo`, synthetic, seeded, keyless) | Return | Sharpe | Max DD | Vol | Costs | WF Sharpe IS → OOS | MC P(loss) |
+|---|---|---|---|---|---|---|---|
+| Defaults (weighting off, reflection off) | +17.8% | 1.09 | 5.9% | 8.4% | $958 | 1.00 → 1.16 | 6% |
+| `track_record_weighting: true` | +17.4% | 1.08 | 5.4% | 8.3% | $927 | 1.02 → 1.13 | 6% |
+
+With the defaults the demo is identical to the dollar. Weighting by track
+record did **not** improve it: return fell 0.4 points and Sharpe moved
+1.09 → 1.08, while drawdown and costs fell slightly. Final factors: Trend
+Follower ×1.15 (57.6% hit rate over 602 calls), Value & Quality ×1.10 (55.1%,
+443 calls), Low-Vol Defensive ×0.76 (37.5%, 526 calls). The five LLM personas
+stayed at ×1.00: keyless, they abstain, so they have no record. This is a
+small effect on one seeded synthetic history. **It is not evidence that
+learning helps**, and should not be presented as such.
+
+**Reflection was not measured.** Keyless personas abstain, so it changes
+nothing here, and measuring it with live models costs real money; no such run
+was made. A track-record summary also changes an analyst's prompt whenever a
+new call resolves, so with reflection on, expect fewer prompt-cache hits and
+more spend on reruns over new dates.
+
+Demo runtime with the scorekeeper on every meeting: 0.7 s.
+
+Tests: 84 (73 before + 11 in `tests/test_track_record.py`, including an exact
+regression against NAVs measured before this code existed).

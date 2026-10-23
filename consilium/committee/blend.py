@@ -2,7 +2,9 @@
 
     conviction_t = Σ w_a · c_a · h_a · view_a  /  Σ w_a · c_a · h_a
 
-w = mandate blend weight, c = the view's confidence (if confidence_weighted),
+w = mandate blend weight × the analyst's reliability factor (1 unless the
+mandate weights by track record; capped to [0.5, 1.5] by the scorekeeper),
+c = the view's confidence (if confidence_weighted),
 h = horizon factor: a 10-day reversal view is worth min(1, 10 / rebalance_gap)
 of a view that outlives the gap. Abstentions are excluded from numerator AND
 denominator: "no opinion" never masquerades as "neutral".
@@ -22,7 +24,9 @@ class BlendResult(BaseModel):
     n_votes: dict[str, int]
 
 
-def blend_views(views: list[View], weights: dict[str, float], policy: BlendPolicy, rebalance_days: int) -> BlendResult:
+def blend_views(views: list[View], weights: dict[str, float], policy: BlendPolicy, rebalance_days: int,
+                reliability: dict[str, float] | None = None) -> BlendResult:
+    reliability = reliability or {}
     num: dict[str, float] = {}
     den: dict[str, float] = {}
     votes: dict[str, list[float]] = {}
@@ -30,7 +34,7 @@ def blend_views(views: list[View], weights: dict[str, float], policy: BlendPolic
         votes.setdefault(v.ticker, [])
         if v.abstained:
             continue
-        w = weights.get(v.analyst, 1.0)
+        w = weights.get(v.analyst, 1.0) * reliability.get(v.analyst, 1.0)
         if policy.confidence_weighted:
             w *= max(0.05, v.confidence)
         if policy.horizon_aware:

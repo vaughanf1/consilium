@@ -71,6 +71,9 @@ class CommitteePolicy(BaseModel):
     chair_model: str | None = Field(default=None, description="model for the Red Team and CIO; a fast one keeps the wait before the board short")
     board_members: list[BoardMemberSpec] = Field(default_factory=list)
     use_llm: bool = Field(default=True, description="use the LLM for red team / CIO / board when a key is configured; otherwise rules")
+    track_record_weighting: bool = Field(default=False, description="scale each analyst's blend weight by its realised hit "
+                                                                    "rate, shrunk toward 1 and capped to [0.5, 1.5]")
+    reflection: bool = Field(default=False, description="show each LLM analyst a short summary of its own track record")
 
     @field_validator("board_members")
     @classmethod

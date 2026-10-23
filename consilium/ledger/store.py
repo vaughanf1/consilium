@@ -112,6 +112,13 @@ class Ledger:
             row = self._db.execute("SELECT record FROM cycles WHERE id=?", (cycle_id,)).fetchone()
         return CycleRecord.model_validate_json(row[0]) if row else None
 
+    def cycle_records(self, fund: str, mode: str = "paper") -> list[CycleRecord]:
+        """Every meeting this fund has held, oldest first — what the scorekeeper replays."""
+        self._sync()
+        rows = self._db.execute("SELECT record FROM cycles WHERE fund=? AND mode=? ORDER BY as_of ASC, created_at ASC",
+                                (fund, mode)).fetchall()
+        return [CycleRecord.model_validate_json(r[0]) for r in rows]
+
     def latest_book(self, fund: str, mode: str = "paper") -> tuple[float, dict[str, Position], str] | None:
         self._sync()
         row = self._db.execute(

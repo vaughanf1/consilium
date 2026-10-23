@@ -61,7 +61,7 @@ class Committee:
             return list(pool.map(lambda job: job[1].view(job[0], ctx), jobs))
 
     def deliberate(self, tickers: list[str], ctx: AnalysisContext, drawdown: float = 0.0,
-                   on_stage=None, on_vote=None) -> tuple[list[StrategyRecord], Verdict]:
+                   on_stage=None, on_vote=None, reliability: dict[str, float] | None = None) -> tuple[list[StrategyRecord], Verdict]:
         spec = self.fund.spec
         announce = on_stage or (lambda *a, **k: None)
         total = sum(s.weight for s, _ in self.fund.strategies)
@@ -74,7 +74,7 @@ class Committee:
 
         for strategy, staff in self.fund.strategies:
             views = self._collect_views(tickers, staff, ctx)
-            blend = blend_views(views, strategy.analyst_weights, strategy.blend, spec.rebalance_days)
+            blend = blend_views(views, strategy.analyst_weights, strategy.blend, spec.rebalance_days, reliability)
             slice_ = strategy.weight / total
             for t, c in blend.convictions.items():
                 netted[t] += slice_ * c

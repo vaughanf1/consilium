@@ -15,6 +15,7 @@ from dataclasses import dataclass, field
 
 from consilium.analysts.base import AnalysisContext
 from consilium.committee import Committee
+from consilium.committee.scorekeeper import Scorekeeper
 from consilium.core.models import CycleRecord, Fill, TickerSkip
 from consilium.core.spec import Fund, normalize_universe
 from consilium.data.features import PriceBook
@@ -27,18 +28,28 @@ from consilium.risk.limits import apply_limits
 @dataclass
 class CycleContext:
     """State that persists across cycles within one run: the committee (its
-    LLM client + caches), the price book, and the high-water mark."""
+    LLM client + caches), the price book, the high-water mark, and the
+    scorekeeper (seed it from the ledger for a paper run that carries on)."""
 
     fund: Fund
     book: PriceBook
     committee: Committee
     high_water: float = 0.0
     sector_cache: dict[str, str] = field(default_factory=dict)
+    track: Scorekeeper = field(default_factory=Scorekeeper)
 
     def sector(self, t: str) -> str:
         if t not in self.sector_cache:
             self.sector_cache[t] = self.book.sector(t)
         return self.sector_cache[t]
+
+
+def seed_track(ctx: CycleContext, ledger) -> None:
+    """A paper run picks up the fund's track record where the ledger left it.
+    Only when the mandate uses it: replaying every past meeting is not free."""
+    policy = ctx.fund.spec.committee
+    if policy.track_record_weighting or policy.reflection:
+        ctx.track = Scorekeeper.from_records(ledger.cycle_records(ctx.fund.spec.name))
 
 
 def run_cycle(ctx: CycleContext, as_of: str, broker: Broker, universe: list[str],
@@ -82,10 +93,22 @@ def run_cycle(ctx: CycleContext, as_of: str, broker: Broker, universe: list[str]
     ctx.high_water = max(ctx.high_water, equity_before)
     drawdown = equity_before / ctx.high_water - 1 if ctx.high_water > 0 else 0.0
 
+    # --- track record --------------------------------------------------
+    # Calls due by today are scored on today's marks, before anyone speaks.
+    # The scorecard is always kept; it only touches the blend or a prompt
+    # when the mandate opts in.
+    policy = spec.committee
+    ctx.track.resolve(as_of, marks)
+    track_record = ctx.track.scores(spec.analyst_names)
+    reliability = ctx.track.factors(spec.analyst_names) if policy.track_record_weighting else {}
+    reflection = {}
+    if policy.reflection:
+        reflection = {a: s for a in spec.analyst_names if (s := ctx.track.summary(a))}
+
     # --- committee -----------------------------------------------------
-    actx = AnalysisContext(book=ctx.book, date=as_of, benchmark=spec.benchmark)
+    actx = AnalysisContext(book=ctx.book, date=as_of, benchmark=spec.benchmark, reflection=reflection)
     strategy_records, verdict = ctx.committee.deliberate(
-        tradeable, actx, drawdown=drawdown, on_stage=on_stage, on_vote=on_vote)
+        tradeable, actx, drawdown=drawdown, on_stage=on_stage, on_vote=on_vote, reliability=reliability)
 
     # --- sizing --------------------------------------------------------
     vols = {t: (actx.market(t).vol_60 if actx.market(t) else None) for t in tradeable}
@@ -113,7 +136,7 @@ def run_cycle(ctx: CycleContext, as_of: str, broker: Broker, universe: list[str]
     traded = sum(f.price * f.quantity for f in fills)
 
     bench_mark = ctx.book.mark(spec.benchmark, as_of)
-    return CycleRecord(
+    rec = CycleRecord(
         id=uuid.uuid4().hex[:12], fund=spec.name, as_of=as_of, universe=universe, marks=marks,
         sectors={t: sectors.get(t, "Unknown") for t in tradeable}, skipped=skipped,
         strategies=strategy_records, verdict=verdict, target_weights=targets, risk_events=exit_events + risk.events,
@@ -121,4 +144,7 @@ def run_cycle(ctx: CycleContext, as_of: str, broker: Broker, universe: list[str]
         orders=orders, fills=fills, positions=positions_after, cash=cash_after, nav=nav,
         costs=costs, turnover=traded / equity_before if equity_before else 0.0, drawdown=drawdown,
         benchmark_close=bench_mark, elapsed_s=round(time.perf_counter() - t0, 3),
+        track_record=track_record, reliability=reliability,
     )
+    ctx.track.add(rec)
+    return rec
