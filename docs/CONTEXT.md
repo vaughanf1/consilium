@@ -41,7 +41,7 @@ say "paper trading" or "simulated" at least once.
 | Live demo | https://consilium-khaki-three.vercel.app — no login, no key |
 | Repo | https://github.com/vaughanf1/consilium — MIT |
 | Stack | Python engine (FastAPI, pydantic, numpy) + hand-written dashboard (no framework, no build step, no chart library, no CDN) |
-| Size | ~4,400 lines Python, ~1,200 lines dashboard, ~870 lines tests |
+| Size | ~4,400 lines Python, ~1,200 lines dashboard, ~870 lines tests (measured before Oct 2026; see §17 for the current test count) |
 | Tests | 51, run in ~2s, no network and no API keys required |
 | Data | Free by default: yfinance for real prices, plus a seeded offline synthetic market |
 | Models | Anthropic, OpenAI, DeepSeek, xAI, Groq, **OpenRouter** (one key → every vendor), or a free local model via Ollama |
@@ -175,12 +175,27 @@ fund look worse when it deserves to:
 
 ## 8. What is on screen
 
-Five tabs. Dark graphite theme with one electric-mint accent; both light and
-dark palettes are validated for colour-blind separation and contrast. A build
-stamp in the footer shows the environment and commit.
+Five tabs, each opening with a one-line explanation of what it is for.
+Redesigned 23 October 2026 as a soft, simple layout:
+
+- **Look:** warm paper in light mode, quiet charcoal in dark. It follows the
+  system setting unless the toggle overrides it. One muted teal accent,
+  sentence-case labels.
+- **Detail is tucked away:** secondary options sit under "More options", and
+  long tables sit behind "Show" disclosures.
+- **Build stamp:** the footer shows the environment and commit.
 
 | Tab | What is there | The moment |
 |---|---|---|
+| **Council** | Fund + stocks + Convene; a five-step progress line; 1 · the desk (analysts, Red Team, CIO), 2 · the vote (five seat cards and the decision), 3 · where the money went; then "Read the full transcript" | Press Convene: the steps light up, then five cards flip from "considering the book…" to their verdicts, one at a time, as each model finishes |
+| **Backtest** | Fund + stocks + Run (dates, data and model under More options); seven stat tiles; fund vs index with regime shading; "Does it hold up?" (walk-forward); risk over time; alternative histories (Monte Carlo); the book at the end, with sector bars against the cap and every limit that fired | The curve draws itself meeting by meeting; then the alternative-histories fan |
+| **Meetings** | Says whose transcript it is reading (a backtest, one Council meeting, or the paper fund); a slider across every meeting; CIO memo, Red Team, the vote, final weights and trades; analyst views and track records behind Show | Dragging the slider replays the fund's entire history of arguments |
+| **Paper fund** | Hold the next meeting; value over time; current book; meetings held, each with a Read link into Meetings | The track record carries from run to run |
+| **Funds** | Each fund's rules as editable YAML with validation; the analyst roster behind Show | The roster reads like a cast list |
+
+Every chart has a table view. All charts are hand-drawn SVG — no chart library.
+
+---|---|---|
 | **Council** | Convene button, a live pipeline strip, the desk's book and Red Team objections, five seat cards, the resolution | Press Convene: stages light up, then five cards flip from "considering the book…" to their verdicts, one at a time, as each model finishes |
 | **Research** | Backtest filters, seven stat tiles, equity curve vs benchmark with regime shading, walk-forward, drawdown/exposure/rolling-Sharpe, Monte Carlo fan, full statistics | The curve draws itself meeting by meeting; then the Monte Carlo fan |
 | **Committee** | A slider across every meeting; CIO memo, Red Team haircuts, every analyst's stance/conviction/thesis, conviction → weights → orders, risk events | Dragging the slider replays the fund's entire history of arguments |
