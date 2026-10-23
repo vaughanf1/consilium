@@ -23,6 +23,7 @@ class AnalysisContext:
     book: PriceBook
     date: str
     benchmark: str
+    reflection: dict[str, str] = field(default_factory=dict)   # analyst -> its own track record, when the mandate shows it
     _market: dict[str, MarketSnapshot | None] = field(default_factory=dict)
     _fund: dict[str, Fundamentals | None] = field(default_factory=dict)
 

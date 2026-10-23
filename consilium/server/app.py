@@ -198,7 +198,7 @@ def create_app() -> FastAPI:
         from consilium.core.spec import Fund, normalize_universe
         from consilium.data.features import PriceBook
         from consilium.execution import SimBroker
-        from consilium.pipeline import CycleContext, run_cycle
+        from consilium.pipeline import CycleContext, run_cycle, seed_track
         spec = load_spec(_mandate_path(req.fund))
         budget = guard.apply(spec)
         universe = normalize_universe(req.tickers)
@@ -217,6 +217,8 @@ def create_app() -> FastAPI:
                     book = PriceBook(provider, (_date.fromisoformat(as_of) - timedelta(days=30)).isoformat(), as_of)
                     ctx = CycleContext(fund=fund, book=book, committee=Committee(fund, model=req.model),
                                        high_water=spec.capital)
+                    if not req.fresh:
+                        seed_track(ctx, ledger)
                     q.put({"type": "stage", "name": "data", "state": "done",
                            "detail": {"tickers": universe, "as_of": as_of, "provider": provider.name}})
                     rec = run_cycle(ctx, as_of, broker, universe,
@@ -287,7 +289,7 @@ def create_app() -> FastAPI:
         from consilium.core.spec import Fund, normalize_universe
         from consilium.data.features import PriceBook
         from consilium.execution import SimBroker
-        from consilium.pipeline import CycleContext, run_cycle
+        from consilium.pipeline import CycleContext, run_cycle, seed_track
         spec = load_spec(_mandate_path(req.fund))
         guard.apply(spec)
         universe = normalize_universe(req.tickers)
@@ -304,6 +306,8 @@ def create_app() -> FastAPI:
             hist = ledger.cycles(spec.name)
             if hist:
                 ctx.high_water = max(c["nav"] for c in hist)
+            if not req.fresh:
+                seed_track(ctx, ledger)
             job.message = "committee sitting…"
             rec = run_cycle(ctx, as_of, broker, universe)
             ledger.record_cycle(rec, mode="paper")

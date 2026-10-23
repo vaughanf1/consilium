@@ -162,7 +162,7 @@ def cmd_run(args) -> None:
     from consilium.data.features import PriceBook
     from consilium.execution import SimBroker
     from consilium.ledger import Ledger
-    from consilium.pipeline import CycleContext, run_cycle
+    from consilium.pipeline import CycleContext, run_cycle, seed_track
 
     spec, fund, universe = _fund_and_universe(args)
     as_of = args.date or _date.today().isoformat()
@@ -181,6 +181,8 @@ def cmd_run(args) -> None:
     hist = ledger.cycles(spec.name)
     if hist:
         ctx.high_water = max(c["nav"] for c in hist)
+    if not args.fresh:
+        seed_track(ctx, ledger)
     with console.status(f"[bold]{spec.name}[/]: committee sitting as of {as_of} on {', '.join(universe)}…"):
         rec = run_cycle(ctx, as_of, broker, universe)
     ledger.record_cycle(rec, mode="paper")

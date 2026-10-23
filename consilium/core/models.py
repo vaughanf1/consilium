@@ -201,6 +201,19 @@ class StrategyRecord(BaseModel):
     convictions: dict[str, float]     # blended per ticker, pre-committee
 
 
+class AnalystScore(BaseModel):
+    """One analyst's realised record as of a meeting: only calls whose horizon
+    had fully run by then, scored against the marks the fund actually saw."""
+
+    analyst: str
+    n: int = 0                        # directional calls resolved
+    hits: int = 0                     # ... whose sign matched the realised move
+    hit_rate: float | None = None
+    avg_contribution: float | None = None   # mean of conviction × realised return
+    pending: int = 0                  # calls made but not yet due
+    reliability: float = 1.0          # the shrunk, capped factor this record implies
+
+
 class CycleRecord(BaseModel):
     """One tick of the fund end to end. Nothing about a decision lives anywhere else."""
 
@@ -228,3 +241,5 @@ class CycleRecord(BaseModel):
     drawdown: float = 0.0             # from high-water mark, as fraction
     benchmark_close: float | None = None
     elapsed_s: float = 0.0
+    track_record: dict[str, AnalystScore] = Field(default_factory=dict)   # what was known going into the meeting
+    reliability: dict[str, float] = Field(default_factory=dict)           # factors applied to the blend; empty = off
