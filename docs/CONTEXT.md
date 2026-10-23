@@ -38,7 +38,7 @@ say "paper trading" or "simulated" at least once.
 |---|---|
 | Name | Consilium (Latin: a council, a deliberation) |
 | Tagline in the app | "an investment committee, in session" |
-| Live demo | https://consilium-khaki-three.vercel.app — no login, no key |
+| Live demo | https://consilium-neon.vercel.app — no login, no key |
 | Repo | https://github.com/vaughanf1/consilium — MIT |
 | Stack | Python engine (FastAPI, pydantic, numpy) + hand-written dashboard (no framework, no build step, no chart library, no CDN) |
 | Size | ~4,400 lines Python, ~1,200 lines dashboard, ~870 lines tests (measured before Oct 2026; see §17 for the current test count) |
