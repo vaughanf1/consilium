@@ -436,3 +436,79 @@ email was supplied for this session. All EDGAR behaviour above is verified
 against a fixture in the tests, not against live SEC data.
 
 Tests: 93 (84 before + 9 in `tests/test_edgar.py`; no network).
+
+---
+
+## 17. Measured numbers — 23 October 2026: after all four workstreams
+
+**How these were produced.** Code at the merge of PR #4. Run on a fresh, empty
+`CONSILIUM_HOME`, so no data or prompt cache was carried over. Keyless
+(`CONSILIUM_NO_LLM=1`: the LLM personas abstain, and the Red Team, CIO and
+Council run on rules). Universe: the demo's ten names, AAPL MSFT NVDA GOOGL
+AMZN JPM UNH XOM PG CAT. 500 Monte Carlo paths. Each mandate was run three
+ways:
+
+- **baseline** — every new feature off (`risk.vol_correlation: false`; no
+  membership file; weighting and reflection off). This is the code's
+  behaviour before the workstreams.
+- **defaults** — what a clean clone does today. Only WS1 is active, because
+  correlation-aware vol is on by default.
+- **+ weighting** — defaults plus `committee.track_record_weighting: true`,
+  so WS1 and WS3a/b are active.
+
+**Not active in any run:** WS2 (no membership file ships with the repo), WS3c
+reflection (keyless personas abstain, so it can change nothing), and WS4 (no
+live EDGAR run; see §16).
+
+| Mandate · data · window | Variant | Return | Index | Sharpe | Max DD | Index DD | Costs | WF Sharpe IS → OOS | MC P(loss) | Final NAV |
+|---|---|---|---|---|---|---|---|---|---|---|
+| committee-balanced · synthetic · 2024-01-05 → 2025-06-30 (= `consilium demo`) | baseline | +17.8% | +24.4% | 1.09 | 5.9% | 11.3% | $958 | 1.00 → 1.16 | 6% | $117,847.80 |
+| | defaults | +17.8% | +24.4% | 1.09 | 5.9% | 11.3% | $958 | 1.00 → 1.16 | 6% | $117,847.80 |
+| | + weighting | +17.4% | +24.4% | 1.08 | 5.4% | 11.3% | $927 | 1.02 → 1.13 | 6% | $117,418.49 |
+| systematic-trend · yfinance · 2024-06-03 → 2025-06-30 | baseline | −7.0% | +17.5% | −0.76 | 15.3% | 16.9% | $1,111 | 1.21 → −2.77 | 75% | $93,028.65 |
+| | defaults | −6.5% | +17.5% | −0.73 | 14.9% | 16.9% | $1,113 | 1.21 → −2.72 | 73% | $93,506.92 |
+| | + weighting | −6.5% | +17.5% | −0.73 | 14.9% | 16.9% | $1,113 | 1.21 → −2.72 | 73% | $93,506.92 |
+| committee-balanced · yfinance · 2024-01-05 → 2025-06-30 | baseline | +8.8% | +34.5% | 0.39 | 13.8% | 16.9% | $1,157 | 1.90 → −1.31 | 28% | $108,803.75 |
+| | defaults | +8.8% | +34.5% | 0.39 | 13.8% | 16.9% | $1,157 | 1.90 → −1.31 | 28% | $108,803.75 |
+| | + weighting | +10.3% | +34.5% | 0.48 | 12.8% | 16.9% | $1,174 | 1.97 → −1.18 | 26% | $110,345.75 |
+
+**What the numbers say, and what they don't.**
+
+- **Correlation-aware vol (WS1)** fired once in all nine runs: one meeting of
+  systematic-trend on real data, where it trimmed the book. That run finished
+  0.5 points less badly (−6.5% vs −7.0%). Everywhere else the vol target was
+  never reached, so nothing changed.
+- **Track-record weighting (WS3)** helped the real-data committee
+  (+10.3% vs +8.8%, Sharpe 0.48 vs 0.39, shallower drawdown). It slightly hurt
+  the synthetic demo (+17.4% vs +17.8%). It did nothing at all on
+  systematic-trend: every pod there has a single analyst, and the factor
+  reweights analysts *within* a pod's blend, so with one analyst it cancels.
+  It never moves capital between pods. Final factors, real-data committee:
+  Value & Quality ×1.37, Trend ×1.13, Low-Vol ×0.96. Synthetic demo:
+  Trend ×1.15, Value & Quality ×1.10, Low-Vol ×0.76.
+- One mixed result across two histories is **not evidence that the learning
+  loop works.** Say "it can reweight analysts by their record, within hard
+  caps", not "it gets better".
+- **Every fund still trails its index by a wide margin**, and both real-data
+  runs collapse out of sample (walk-forward Sharpe turns negative). That is
+  the honest story, unchanged.
+- Both yfinance runs print the **survivorship warning** (WS2). The
+  committee-balanced yfinance run also prints the **point-in-time warning**,
+  because its value analyst reads latest-only fundamentals.
+
+**Reproducing them.**
+
+- **The synthetic rows reproduce exactly** from a clean clone:
+  `consilium demo` gives $117,847.80. The demo itself never uses yfinance.
+- **The yfinance rows will drift.** yfinance serves prices adjusted for
+  dividends and splits as of the day you download them, so every new dividend
+  slightly rescales past prices. A clean clone on a later date will get close
+  to these numbers, not the same ones. To film something viewers can match to
+  the cent, use the demo. Or say on screen that real-data figures depend on
+  the download date.
+- **The §9 real-data figures are not comparable.** They used an unrecorded
+  universe and an earlier download (systematic-trend −2.7% there vs −7.0%
+  baseline here; committee-balanced +6.8% vs +8.8%). They are left as
+  measured.
+
+Tests: 93 passing, ~3 s, no network, no keys.
