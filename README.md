@@ -1,6 +1,6 @@
 # Consilium
 
-**Live demo:** https://consilium-khaki-three.vercel.app — no login, no API key.
+**Live demo:** https://consilium-neon.vercel.app — no login, no API key.
 **Full product context:** [`docs/CONTEXT.md`](docs/CONTEXT.md) — every feature, the full cast, verified numbers, and what the system will not claim.
 
 **An AI investment committee you can backtest, paper-trade, and interrogate.**

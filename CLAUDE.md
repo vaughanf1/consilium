@@ -13,7 +13,7 @@ screen, and what must not be claimed. It exists so this repo can be understood
 without the conversation that produced it — including for writing marketing or
 video scripts about it.
 
-Live demo: https://consilium-khaki-three.vercel.app (no login, no API key)
+Live demo: https://consilium-neon.vercel.app (no login, no API key)
 
 ## Working on this repo
 
