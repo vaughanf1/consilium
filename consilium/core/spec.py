@@ -104,6 +104,7 @@ class RiskLimits(BaseModel):
     min_net_exposure: float = Field(default=-1.0)
     max_sector_pct: float | None = Field(default=0.40, gt=0)
     portfolio_vol_target: float | None = Field(default=None, gt=0, description="scale the book down when estimated vol exceeds this")
+    vol_correlation: bool = Field(default=True, description="estimate portfolio vol with a shrunk EWMA correlation; false = assume names are independent (the pre-Oct-2026 estimate)")
     drawdown_soft: float | None = Field(default=0.10, gt=0, description="halve exposure beyond this drawdown")
     drawdown_hard: float | None = Field(default=0.20, gt=0, description="go flat beyond this drawdown")
 
