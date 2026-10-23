@@ -20,6 +20,7 @@ from consilium.core.spec import Fund, normalize_universe
 from consilium.data.features import PriceBook
 from consilium.execution.broker import Broker, build_orders
 from consilium.portfolio.construction import apply_rebalance_band, size_book
+from consilium.risk.correlation import CORR_LOOKBACK, estimate_correlation
 from consilium.risk.limits import apply_limits
 
 
@@ -81,7 +82,11 @@ def run_cycle(ctx: CycleContext, as_of: str, broker: Broker, universe: list[str]
 
     # --- risk ----------------------------------------------------------
     sectors = {t: ctx.sector(t) for t in set(targets) | set(held)}
-    risk = apply_limits(targets, spec.risk, sectors=sectors, vols=vols, drawdown=drawdown)
+    corr = None
+    if spec.risk.portfolio_vol_target and spec.risk.vol_correlation:
+        names = sorted(t for t, x in targets.items() if x != 0)
+        corr = estimate_correlation(names, ctx.book.aligned_log_returns(names, as_of, CORR_LOOKBACK))
+    risk = apply_limits(targets, spec.risk, sectors=sectors, vols=vols, drawdown=drawdown, corr=corr)
 
     # --- execution -----------------------------------------------------
     orders = build_orders(risk.weights, held, marks, equity_before, spec.portfolio.min_trade_pct)

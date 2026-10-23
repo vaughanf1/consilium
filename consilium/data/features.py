@@ -67,6 +67,22 @@ class PriceBook:
         i = bisect_right(self._dates[ticker], date)
         return self._bars[ticker][max(0, i - n):i]
 
+    def aligned_log_returns(self, tickers: list[str], date: str, n: int) -> np.ndarray:
+        """Daily log returns over the last `n` days on which EVERY ticker printed
+        (T×len(tickers), oldest first, T ≤ n). Point-in-time like everything
+        else here; a name missing a day removes that day for all of them."""
+        if not tickers:
+            return np.empty((0, 0))
+        series = []
+        for t in tickers:
+            bars = self.bars_until(t, date, n + 60)   # slack so holidays don't starve the overlap
+            series.append({b.date: b.close for b in bars})
+        common = sorted(set.intersection(*(set(s) for s in series)))[-(n + 1):]
+        if len(common) < 2:
+            return np.empty((0, len(tickers)))
+        closes = np.array([[s[d] for s in series] for d in common], dtype=float)
+        return np.diff(np.log(closes), axis=0)
+
     def mark(self, ticker: str, date: str, max_stale_days: int = 7) -> float | None:
         """Last close on or before date, if it is fresh enough."""
         from datetime import date as _d

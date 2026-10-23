@@ -5,9 +5,11 @@ Order (each stage only shrinks, so the sequence is idempotent):
    beyond drawdown_hard it goes flat. The fund lives to fight another day.
 2. Per-name cap.
 3. Sector concentration cap: a sector's Σ|w| above max_sector_pct is scaled down.
-4. Portfolio vol target: if √(Σ (w·σ)²) (the diversified-ish estimate that
-   ignores correlation — conservative for longs, optimistic for L/S) exceeds
-   the target, scale the book down.
+4. Portfolio vol target: if √(wᵀ Σ w) exceeds the target, scale the book
+   down. Σ uses a shrunk EWMA correlation (risk/correlation.py) so ten names
+   riding one factor are sized as the one bet they are. With too little
+   overlapping history it falls back to the independent √(Σ (w·σ)²) — which
+   understates risk for correlated longs — and logs that it did.
 5. Net exposure band, then gross cap.
 Exposure removed by a clamp stays in cash — it is never redistributed.
 """
@@ -20,6 +22,7 @@ from pydantic import BaseModel
 
 from consilium.core.models import RiskEvent
 from consilium.core.spec import RiskLimits
+from consilium.risk.correlation import CORR_MIN_OBS, CorrelationEstimate, correlated_vol, independent_vol
 
 
 _TOL = 1e-4  # ignore float drift; a clamp should mean something
@@ -31,7 +34,8 @@ class RiskResult(BaseModel):
 
 
 def apply_limits(weights: dict[str, float], limits: RiskLimits, *, sectors: dict[str, str] | None = None,
-                 vols: dict[str, float | None] | None = None, drawdown: float = 0.0) -> RiskResult:
+                 vols: dict[str, float | None] | None = None, drawdown: float = 0.0,
+                 corr: CorrelationEstimate | None = None) -> RiskResult:
     w = dict(weights)
     events: list[RiskEvent] = []
     sectors = sectors or {}
@@ -73,14 +77,33 @@ def apply_limits(weights: dict[str, float], limits: RiskLimits, *, sectors: dict
                 events.append(RiskEvent(limit="max_sector_pct", ticker=None, before=g, after=limits.max_sector_pct,
                                         note=f"{sec} scaled down"))
 
-    # 4. portfolio vol target (correlation-free estimate)
-    if limits.portfolio_vol_target:
-        est = math.sqrt(sum((x * (vols.get(t) or 0.25)) ** 2 for t, x in w.items()))
-        if est > limits.portfolio_vol_target and est > 0:
-            scale = limits.portfolio_vol_target / est
+    # 4. portfolio vol target. `corr` None means the caller chose the
+    # independent estimate (limits.vol_correlation off); a thin estimate is a
+    # fallback, and that is logged because it understates correlated risk.
+    if limits.portfolio_vol_target and gross_of(w) > 0:
+        target = limits.portfolio_vol_target
+        indep = independent_vol(w, vols)
+        est, basis = indep, "independent"
+        if corr is not None:
+            c = correlated_vol(w, vols, corr)
+            if c is None:
+                why = (f"{corr.n_obs} overlapping return days < {CORR_MIN_OBS}" if corr.matrix is None
+                       else "no return history for every held name")
+                events.append(RiskEvent(limit="portfolio_vol_fallback", before=indep, after=indep,
+                                        note=f"{why}: correlation ignored, vol estimated as if names were independent"))
+            else:
+                est, basis = c, "correlated"
+        if est > target:
+            scale = target / est
             w = {t: x * scale for t, x in w.items()}
-            events.append(RiskEvent(limit="portfolio_vol_target", before=est, after=limits.portfolio_vol_target,
-                                    note="book scaled to vol target"))
+            if basis == "correlated" and indep <= target:
+                note = (f"correlation-aware vol {est:.1%} vs {indep:.1%} assuming independence: "
+                        f"scaled down because of correlation — the independent estimate would not have")
+            elif basis == "correlated":
+                note = f"book scaled to vol target (correlation-aware {est:.1%}, independent {indep:.1%})"
+            else:
+                note = "book scaled to vol target (independent estimate)"
+            events.append(RiskEvent(limit="portfolio_vol_target", before=est, after=target, note=note))
 
     # 5. net band, then gross cap
     net = sum(w.values())

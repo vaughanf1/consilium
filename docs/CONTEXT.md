@@ -255,3 +255,48 @@ embarrass the fund, and a transcript of every argument the machine ever had.
 The most quotable property: **it is allowed to say no.** If the evidence does
 not survive the Red Team, the CIO and the Council, the fund does not trade — and
 you can read exactly who objected, in their own words.
+
+---
+
+## 13. Measured numbers — 23 October 2026: correlation-aware vol targeting (Workstream 1)
+
+**What changed.** The portfolio vol target (risk stage 4) now estimates vol as
+√(wᵀ Σ w) with Σ = D·R·D: the per-name 60-day vols on the diagonal, and R an
+EWMA correlation of daily log returns (120-day lookback, 20-day halflife) shrunk
+toward the identity by λ = 0.3, so no estimated correlation can exceed ±0.7.
+With fewer than 40 overlapping return days it falls back to the old independent
+estimate and logs a `portfolio_vol_fallback` risk event. When correlation alone
+causes a scale-down, the event note says so. The clamp still only ever shrinks
+the book. The new mandate field `risk.vol_correlation` (default `true`) can be
+set to `false` to restore the old estimate exactly.
+
+**How to reproduce.** From a clean clone: `consilium demo` (synthetic, seeded,
+committee-balanced, keyless, 2024-01-05 → 2025-06-30, 79 meetings, default
+10-name universe).
+
+| Run | Return | Sharpe | Max DD | Vol | Costs | WF Sharpe IS → OOS | MC P(loss) | Vol-target clamps |
+|---|---|---|---|---|---|---|---|---|
+| BEFORE (`vol_correlation: false`) | +17.8% | 1.09 | 5.9% | 8.4% | $958 | 1.00 → 1.16 | 6% | 0 |
+| AFTER (default) | +17.8% | 1.09 | 5.9% | 8.4% | $958 | 1.00 → 1.16 | 6% | 0 |
+| systematic-trend, synthetic, both settings | +12.2% | 0.72 | 5.8% | 8.2% | $986 | 0.86 → 0.69 | 14% | 0 |
+
+**The demo numbers do not move, and that is the honest result.** The two runs
+match to the dollar (final NAV $117,847.80). The correlation-aware estimate is
+higher, as it should be for a long-only book: 8.2% on average against 7.5%
+assuming independence, and 13.7% at the peak against 9.6%. Neither ever reaches
+the committee-balanced mandate's 16% target (or systematic-trend's 14%), so the
+clamp never fires. The fallback never fired either: every meeting had the full
+120 days of overlap. The change matters for books that are concentrated,
+correlated or long/short, and for tighter targets. It does not change the
+headline demo.
+
+**Do not quote this as "correlation made the fund safer"** on the demo. It
+changed no trades there.
+
+**Baseline drift, noted rather than explained.** The BEFORE row above was
+measured today, before any Workstream 1 code existed. It differs from the §9
+figure (+16.1%, Sharpe 1.04, $921 costs). The §9 number is left as it was
+measured. The cause of the difference was not investigated in this session.
+Use the figures in this section for anything reproduced from the current code.
+
+Tests: 64 (51 existing, all still passing, plus 13 in `tests/test_correlation.py`).
