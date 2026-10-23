@@ -50,12 +50,30 @@ class CachedProvider:
                              lambda d: [Bar(**b) for b in d])
 
     def fundamentals(self, ticker: str, as_of: str) -> Fundamentals | None:
-        # Latest-only providers return the same row for every as_of; key on the
-        # month so a long backtest doesn't write thousands of identical files.
-        bucket = as_of[:7] if self._inner.point_in_time else "latest"
+        # Latest-only providers return the same row for every as_of, so one file
+        # serves them all. A point-in-time row is only valid for its own date:
+        # bucketing it (by month, say) would let a run that asked for the 29th
+        # hand the 29th's numbers to a later run asking for the 1st.
+        bucket = as_of if self._inner.point_in_time else "latest"
         return self._through(self._key("fundamentals", ticker=ticker, as_of=bucket),
                              lambda: self._inner.fundamentals(ticker, as_of),
                              lambda d: Fundamentals(**d) if d else None)
+
+    def splits(self, ticker: str, end: str) -> list[tuple[str, float]]:
+        """Keyed on the price window's end so a split history is always the same
+        snapshot as the split-adjusted closes it is paired with."""
+        get = getattr(self._inner, "splits", None)
+        if get is None:
+            return []
+        path = self._key("splits", ticker=ticker, end=end)
+        if str(path) not in self._mem:
+            if path.exists():
+                rows = json.loads(path.read_text())
+            else:
+                rows = [[d, r] for d, r in get(ticker)]
+                path.write_text(json.dumps(rows))
+            self._mem[str(path)] = [(d, float(r)) for d, r in rows]
+        return self._mem[str(path)]
 
     def profile(self, ticker: str) -> Profile | None:
         return self._through(self._key("profile", ticker=ticker),
