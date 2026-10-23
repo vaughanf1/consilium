@@ -352,19 +352,33 @@
     const body = { fund: $("#f-fund").value, tickers: $("#f-tickers").value, start: $("#f-start").value || null, end: $("#f-end").value || null,
                    provider: $("#f-provider").value, model: $("#f-model").value || null };
     if (!body.fund) { $("#bt-status").textContent = "Still loading the funds — try again in a moment."; return; }
-    $("#btn-backtest").disabled = true; $("#bt-progress").classList.remove("hidden"); $("#bt-warning").classList.add("hidden");
-    $("#bt-status").textContent = "Starting…";
+    // Make the run visible at once: a re-run of the same settings would otherwise redraw an identical page.
+    const btn = $("#btn-backtest"), t0 = performance.now();
+    btn.disabled = true; btn.textContent = "Running…";
+    $("#bt-progress > i").style.width = "0%"; $("#bt-progress").classList.remove("hidden");
+    $("#bt-warning").classList.add("hidden"); $("#bt-warning").classList.remove("err");
+    $("#research-body").classList.add("hidden"); $("#research-empty").classList.remove("hidden");
+    $("#research-empty").innerHTML = `<div class="empty">Running the backtest — the chart draws itself as each meeting concludes.</div>`;
+    $("#bt-status").textContent = "Starting… pricing the stocks";
     $("#provider-pill").textContent = `data: ${body.provider}`;
-    try { await streamBacktest(body); }
-    catch (e) { $("#bt-status").innerHTML = `<span class="loss">${esc(e.message)}</span>`; $("#bt-progress").classList.add("hidden"); }
-    $("#btn-backtest").disabled = false;
+    try {
+      await streamBacktest(body);
+      $("#bt-status").innerHTML = `<span class="gain">Done in ${((performance.now() - t0) / 1000).toFixed(1)}s.</span> ` + $("#bt-status").innerHTML;
+    } catch (e) {
+      $("#bt-status").innerHTML = `<span class="loss">The backtest did not finish.</span>`;
+      const w = $("#bt-warning"); w.textContent = e.message; w.classList.add("err"); w.classList.remove("hidden");
+      $("#research-empty").innerHTML = `<div class="empty">No result — see the message above, then try again.</div>`;
+      if (state.result) { $("#research-empty").classList.add("hidden"); $("#research-body").classList.remove("hidden"); }   // keep the last good run on screen
+    }
+    $("#bt-progress").classList.add("hidden");
+    btn.disabled = false; btn.textContent = "Run backtest";
   };
   /** One request; NDJSON progress lines draw the curve as each meeting concludes; the full result arrives last. */
   async function streamBacktest(body) {
     const resp = await fetch("/api/backtest/stream", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
     if (!resp.ok) { let m = resp.statusText; try { m = (await resp.json()).detail || m; } catch {} throw new Error(m); }
     const live = { dates: [], nav: [], benchmark_nav: [], regime: [] };
-    let capital = null, lastDraw = 0;
+    let capital = null, lastDraw = 0, finished = false;
     const handle = (msg) => {
       if (msg.type === "progress") {
         live.dates.push(msg.date); live.nav.push(msg.nav); live.benchmark_nav.push(msg.benchmark_nav); live.regime.push(msg.regime);
@@ -373,7 +387,7 @@
         $("#bt-status").textContent = `Meeting ${msg.i} of ${msg.n} · ${msg.date} · fund value $${Math.round(msg.nav).toLocaleString()}`;
         const now = performance.now();
         if (now - lastDraw > 120 || msg.i === msg.n) { lastDraw = now; $("#research-empty").classList.add("hidden"); $("#research-body").classList.remove("hidden"); drawEquity(live.dates, live.nav, live.benchmark_nav, live.regime, capital); }
-      } else if (msg.type === "result") { $("#bt-progress").classList.add("hidden"); setResult(msg.result); }
+      } else if (msg.type === "result") { finished = true; $("#bt-progress").classList.add("hidden"); setResult(msg.result); }
       else if (msg.type === "error") { throw new Error(msg.error); }
     };
     const reader = resp.body.getReader(), dec = new TextDecoder(); let buf = "";
@@ -384,6 +398,10 @@
       let nl; while ((nl = buf.indexOf("\n")) >= 0) { const line = buf.slice(0, nl).trim(); buf = buf.slice(nl + 1); if (line) handle(JSON.parse(line)); }
     }
     if (buf.trim()) handle(JSON.parse(buf));
+    // A host that cuts the request off (the hosted demo's time limit) ends the stream with no result and no error.
+    if (!finished) throw new Error(live.dates.length
+      ? `The run stopped after ${live.dates.length} meetings without finishing — the hosted demo allows about five minutes per run. Try fewer stocks or a shorter window.`
+      : "The server closed the connection before the first meeting. Try again, or try fewer stocks.");
   }
   async function pollBacktest() {
     if (!btJob) return;
@@ -618,18 +636,18 @@
   // =====================================================================
   $("#btn-run").onclick = async () => {
     const body = { fund: $("#p-fund").value, tickers: $("#p-tickers").value, date: $("#p-date").value || null, provider: $("#p-provider").value };
-    $("#btn-run").disabled = true; $("#run-status").textContent = "The committee is sitting…";
+    $("#btn-run").disabled = true; $("#btn-run").textContent = "Meeting…"; $("#run-status").textContent = "The committee is sitting…";
     try {
       const job = await api("/api/run", { method: "POST", body: JSON.stringify(body) });
-      if (job.status === "done") { $("#run-status").textContent = `done — NAV ${fmt.money(job.result.nav)} · ${job.result.orders.length} orders · regime ${job.result.verdict.cio.regime}`; $("#btn-run").disabled = false; await loadPaper(); return; }
+      if (job.status === "done") { $("#run-status").textContent = `done — NAV ${fmt.money(job.result.nav)} · ${job.result.orders.length} orders · regime ${job.result.verdict.cio.regime}`; $("#btn-run").disabled = false; $("#btn-run").textContent = "Hold the next meeting"; await loadPaper(); return; }
       const poll = async () => {
         const j = await api(`/api/jobs/${job.id}`);
-        if (j.status === "done") { $("#run-status").textContent = `done — NAV ${fmt.money(j.result.nav)} · ${j.result.orders.length} orders`; $("#btn-run").disabled = false; await loadPaper(); return; }
-        if (j.status === "failed") { $("#run-status").innerHTML = `<span class="loss">${esc(j.error)}</span>`; $("#btn-run").disabled = false; return; }
+        if (j.status === "done") { $("#run-status").textContent = `done — NAV ${fmt.money(j.result.nav)} · ${j.result.orders.length} orders`; $("#btn-run").disabled = false; $("#btn-run").textContent = "Hold the next meeting"; await loadPaper(); return; }
+        if (j.status === "failed") { $("#run-status").innerHTML = `<span class="loss">${esc(j.error)}</span>`; $("#btn-run").disabled = false; $("#btn-run").textContent = "Hold the next meeting"; return; }
         $("#run-status").textContent = j.message || j.status; setTimeout(poll, 500);
       };
       poll();
-    } catch (e) { $("#run-status").innerHTML = `<span class="loss">${esc(e.message)}</span>`; $("#btn-run").disabled = false; }
+    } catch (e) { $("#run-status").innerHTML = `<span class="loss">${esc(e.message)}</span>`; $("#btn-run").disabled = false; $("#btn-run").textContent = "Hold the next meeting"; }
   };
   $("#btn-reset").onclick = async () => {
     const f = $("#p-fund").value; if (!confirm(`Reset the paper book for ${f}? The ledger rows for this fund are deleted.`)) return;
