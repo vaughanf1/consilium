@@ -16,7 +16,7 @@ from pathlib import Path
 
 import yaml
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
+from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -376,6 +376,12 @@ def create_app() -> FastAPI:
 
     @app.get("/")
     def index():
-        return FileResponse(DASHBOARD / "index.html")
+        # Stamp the asset URLs with a fingerprint of their contents, so a new
+        # deploy is never rendered with a stylesheet the browser cached from the last.
+        import hashlib
+        stamp = hashlib.sha1(b"".join((DASHBOARD / f).read_bytes() for f in ("app.css", "app.js"))).hexdigest()[:10]
+        html = (DASHBOARD / "index.html").read_text()
+        html = html.replace("/static/app.css", f"/static/app.css?v={stamp}").replace("/static/app.js", f"/static/app.js?v={stamp}")
+        return HTMLResponse(html, headers={"Cache-Control": "no-cache"})
 
     return app

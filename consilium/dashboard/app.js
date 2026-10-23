@@ -22,7 +22,8 @@
   const root = document.documentElement;
   try { const t = localStorage.getItem("consilium-theme"); if (t) root.dataset.theme = t; } catch {}
   $("#theme-toggle").onclick = () => {
-    const dark = root.dataset.theme !== "light";   // dark is the default; light is an explicit choice
+    // no explicit choice means "follow the system"; the first toggle flips whatever is showing
+    const dark = root.dataset.theme ? root.dataset.theme === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
     root.dataset.theme = dark ? "light" : "dark";
     try { localStorage.setItem("consilium-theme", root.dataset.theme); } catch {}
     render();  // charts read CSS vars via classes, but table/legend text may need refresh
@@ -31,6 +32,8 @@
   // ---------- nav ----------
   $$(".nav button").forEach((b) => b.onclick = () => showView(b.dataset.view));
   function showView(name) {
+    if (name === "risk") name = "research";            // Book & risk now lives at the foot of Backtest
+    if (!$(`#view-${name}`)) name = "council";
     $$(".nav button").forEach((b) => b.classList.toggle("active", b.dataset.view === name));
     $$(".view").forEach((v) => v.classList.toggle("active", v.id === `view-${name}`));
     try { localStorage.setItem("consilium-view", name); } catch {}
@@ -39,7 +42,15 @@
   }
 
   // ---------- state ----------
-  const state = { meta: null, funds: [], result: null, records: [], cycleIdx: 0, source: "", paper: null, mandate: null };
+  // `result` is the backtest on the Backtest tab; `transcript` is whatever Meetings is reading
+  // (a backtest, one Council meeting, or the paper fund) — so convening never overwrites a backtest.
+  const state = { meta: null, funds: [], result: null, transcript: null, cycleIdx: 0, paper: null, mandate: null, lastCouncil: null };
+
+  function openTranscript(records, label, idx = records.length - 1) {
+    state.transcript = { records, label }; state.cycleIdx = Math.max(0, idx);
+    $("#committee-empty").classList.add("hidden"); $("#committee-body").classList.remove("hidden");
+    renderCommittee();
+  }
 
   // =====================================================================
   // Charts
@@ -247,14 +258,15 @@
   $("#btn-convene").onclick = async () => {
     const body = { fund: $("#c-fund").value, tickers: $("#c-tickers").value, date: $("#c-date").value || null,
                    provider: $("#c-provider").value, fresh: true };
+    if (!body.fund) { $("#brief-body").innerHTML = `<div class="callout">Still loading the funds — try again in a moment.</div>`; return; }
     const btn = $("#btn-convene");
-    btn.disabled = true; btn.textContent = "In session…";
+    btn.disabled = true; btn.textContent = "In session…"; $("#council-actions").classList.add("hidden");
     $("#provider-pill").textContent = `data: ${body.provider}`;
     const state = {}; paintStages(state);
     $("#council-resolution").innerHTML = ""; $("#seats").innerHTML = "";
-    $("#brief-body").innerHTML = `<div class="empty">Pricing the universe…</div>`;
-    $("#brief-pill").textContent = "in session";
-    $("#council-book").innerHTML = `<div class="empty">The book appears once the council has voted.</div>`;
+    $("#brief-body").innerHTML = `<div class="empty">Pricing the stocks…</div>`;
+    $("#brief-pill").textContent = "in session…";
+    $("#council-book").innerHTML = `<div class="empty">The positions appear once the Council has voted.</div>`;
     let seats = [], votes = {};
 
     const handle = (m) => {
@@ -285,8 +297,8 @@
           const counts = {}; r.votes.forEach((v) => counts[v.stance] = (counts[v.stance] || 0) + 1);
           const dir = r.stance === "cut risk" ? "loss" : r.stance === "add risk" ? "gain" : "";
           $("#council-resolution").innerHTML = `<div class="verdictbar">
-            <div><div class="cap">COUNCIL RESOLUTION</div><div class="headline ${dir}">${fmt.pct0(r.exposure, 0)} deployed</div>
-              <div class="cap">CIO proposed ${fmt.pct0(r.cio_proposal, 0)}</div></div>
+            <div><div class="cap">The Council decided</div><div class="headline ${dir}">${fmt.pct0(r.exposure, 0)} invested</div>
+              <div class="cap">the CIO had proposed ${fmt.pct0(r.cio_proposal, 0)}</div></div>
             <div class="tally">${Object.entries(counts).map(([k, n]) =>
               `<span class="${k === "cut risk" ? "loss" : k === "add risk" ? "gain" : "muted"}">${n} × ${esc(k)}</span>`).join("")}</div>
             <div class="text">${esc(r.summary)}</div></div>`;
@@ -303,12 +315,9 @@
         $("#brief-pill").textContent = `NAV ${fmt.money(rec.nav)}`;
         const rows = Object.keys(rec.final_weights).filter((t) => Math.abs(rec.final_weights[t]) > 1e-6).sort((a, b) => Math.abs(rec.final_weights[b]) - Math.abs(rec.final_weights[a]));
         $("#council-book").innerHTML = rows.length ? `<table><tr><th>ticker</th><th>sector</th><th class="num">conviction</th><th class="num">weight</th><th class="num">shares</th></tr>` +
-          rows.map((t) => `<tr><td class="mono">${esc(t)}</td><td class="muted">${esc(rec.sectors[t] || "")}</td><td class="num ${cls(rec.verdict.convictions[t])}">${fmt.signed(rec.verdict.convictions[t])}</td><td class="num">${fmt.pct(rec.final_weights[t])}</td><td class="num">${rec.positions[t] || 0}</td></tr>`).join("") + `</table>` : `<div class="empty">The council deployed nothing this cycle.</div>`;
-        // the Committee / Risk tabs can read this meeting straight away
-        state.records = [rec]; state.cycleIdx = 0; state.source = "council";
-        $("#committee-empty").classList.add("hidden"); $("#committee-body").classList.remove("hidden");
-        $("#risk-empty").classList.add("hidden"); $("#risk-body").classList.remove("hidden");
-        renderCommittee(); renderRisk();
+          rows.map((t) => `<tr><td class="mono">${esc(t)}</td><td class="muted">${esc(rec.sectors[t] || "")}</td><td class="num ${cls(rec.verdict.convictions[t])}">${fmt.signed(rec.verdict.convictions[t])}</td><td class="num">${fmt.pct(rec.final_weights[t])}</td><td class="num">${rec.positions[t] || 0}</td></tr>`).join("") + `</table>` : `<div class="empty">The Council invested nothing this time.</div>`;
+        // the full transcript is one click away; it never replaces the backtest on the Backtest tab
+        state.lastCouncil = rec; $("#council-actions").classList.remove("hidden");
       } else if (m.type === "error") { throw new Error(m.error); }
     };
 
@@ -330,6 +339,11 @@
     btn.disabled = false; btn.textContent = "Convene the Council";
   };
 
+  $("#btn-council-transcript").onclick = () => {
+    const rec = state.lastCouncil; if (!rec) return;
+    openTranscript([rec], `Council meeting · ${rec.fund} · ${rec.as_of}`); showView("committee");
+  };
+
   // =====================================================================
   // Research
   // =====================================================================
@@ -337,8 +351,9 @@
   $("#btn-backtest").onclick = async () => {
     const body = { fund: $("#f-fund").value, tickers: $("#f-tickers").value, start: $("#f-start").value || null, end: $("#f-end").value || null,
                    provider: $("#f-provider").value, model: $("#f-model").value || null };
+    if (!body.fund) { $("#bt-status").textContent = "Still loading the funds — try again in a moment."; return; }
     $("#btn-backtest").disabled = true; $("#bt-progress").classList.remove("hidden"); $("#bt-warning").classList.add("hidden");
-    $("#bt-status").textContent = "convening…";
+    $("#bt-status").textContent = "Starting…";
     $("#provider-pill").textContent = `data: ${body.provider}`;
     try { await streamBacktest(body); }
     catch (e) { $("#bt-status").innerHTML = `<span class="loss">${esc(e.message)}</span>`; $("#bt-progress").classList.add("hidden"); }
@@ -355,10 +370,10 @@
         live.dates.push(msg.date); live.nav.push(msg.nav); live.benchmark_nav.push(msg.benchmark_nav); live.regime.push(msg.regime);
         if (capital == null) capital = msg.benchmark_nav;
         $("#bt-progress > i").style.width = `${Math.round((msg.i / msg.n) * 100)}%`;
-        $("#bt-status").textContent = `${msg.date} · meeting ${msg.i}/${msg.n} · NAV $${Math.round(msg.nav).toLocaleString()} · ${msg.regime}`;
+        $("#bt-status").textContent = `Meeting ${msg.i} of ${msg.n} · ${msg.date} · fund value $${Math.round(msg.nav).toLocaleString()}`;
         const now = performance.now();
         if (now - lastDraw > 120 || msg.i === msg.n) { lastDraw = now; $("#research-empty").classList.add("hidden"); $("#research-body").classList.remove("hidden"); drawEquity(live.dates, live.nav, live.benchmark_nav, live.regime, capital); }
-      } else if (msg.type === "result") { $("#bt-progress").classList.add("hidden"); setResult(msg.result, "backtest"); }
+      } else if (msg.type === "result") { $("#bt-progress").classList.add("hidden"); setResult(msg.result); }
       else if (msg.type === "error") { throw new Error(msg.error); }
     };
     const reader = resp.body.getReader(), dec = new TextDecoder(); let buf = "";
@@ -383,7 +398,7 @@
     if (j.status === "done") {
       const full = j.result ? j : await api(`/api/jobs/${btJob.id}?result=true`);
       $("#btn-backtest").disabled = false; $("#bt-progress").classList.add("hidden");
-      setResult(full.result, "backtest");
+      setResult(full.result);
       return;
     }
     if (j.status === "failed") {
@@ -396,28 +411,27 @@
     setTimeout(pollBacktest, 500);
   }
 
-  function setResult(res, source) {
-    state.result = res; state.records = res.records; state.source = source; state.cycleIdx = res.records.length - 1;
+  function setResult(res) {
+    state.result = res;
     $("#research-empty").classList.add("hidden"); $("#research-body").classList.remove("hidden");
-    $("#committee-empty").classList.add("hidden"); $("#committee-body").classList.remove("hidden");
-    $("#risk-empty").classList.add("hidden"); $("#risk-body").classList.remove("hidden");
+    openTranscript(res.records, `Backtest · ${res.fund} · ${res.start} → ${res.end} · ${res.records.length} meetings`);
     const w = $("#bt-warning"); w.classList.remove("err");
     const warns = [res.point_in_time_warning, res.survivorship_warning].filter(Boolean);
     if (warns.length) { w.textContent = warns.map((x) => `⚠ ${x}`).join("\n"); w.style.whiteSpace = "pre-line"; w.classList.remove("hidden"); } else w.classList.add("hidden");
     const staffedLLM = res.records[0] && res.records[0].strategies.some((s) => s.views.some((v) => (state.meta?.analysts || []).find((a) => a.name === v.analyst)?.kind === "llm"));
     $("#bt-status").innerHTML = `${res.fund} · ${res.start} → ${res.end} · ${res.metrics.n_periods} meetings · ${res.provider}` +
-      (staffedLLM && !res.llm_used ? ` · <span class="warn">LLM personas abstained (no key configured) — committee ran on quant analysts + rules</span>` : res.llm_used ? ` · model ${esc(res.model || state.meta?.current_model || "")}` : "");
+      (staffedLLM && !res.llm_used ? ` · <span class="warn">no AI key here, so the AI analysts sat out and the committee ran on quant analysts and rules</span>` : res.llm_used ? ` · model ${esc(res.model || state.meta?.current_model || "")}` : "");
     render();
   }
 
   function render() {
-    if (!state.result) return;
-    renderResearch(); renderCommittee(); renderRisk();
+    if (state.result) { renderResearch(); renderRisk(); }
+    if (state.transcript) renderCommittee();
   }
 
   function drawEquity(dates, nav, bnav, regime, capital) {
     lineChart($("#eq-chart"), {
-      dates, series: [{ name: "Fund NAV", short: "Fund", cls: "fund", values: nav, area: "fund" }, { name: `Benchmark`, short: "Bench", cls: "bench", values: bnav }],
+      dates, series: [{ name: "Fund", short: "Fund", cls: "fund", values: nav, area: "fund" }, { name: "Index", short: "Index", cls: "bench", values: bnav }],
       baseline: capital, regime, height: 300, actionsEl: $("#eq-actions"), legendEl: $("#eq-legend"),
     });
   }
@@ -437,7 +451,7 @@
       tile("Costs", fmt.money(m.total_costs), `${fmt.pct0(m.cost_drag, 2)} of capital · ${m.n_orders} orders`),
       tile("Hit rate", fmt.pct0(m.hit_rate, 0), `best ${fmt.pct(m.best_period)} · worst ${fmt.pct(m.worst_period)}`),
     ].join("");
-    $("#eq-sub").textContent = `${fmt.money(r.capital)} starting capital · ${r.rebalance} meetings · costs ${r.records[0] ? "modelled" : ""} · shaded strips are the CIO's regime call`;
+    $("#eq-sub").textContent = `${fmt.money(r.capital)} to start, ${r.rebalance} meetings, trading costs included. Green and red shading is the CIO's risk-on / risk-off call.`;
     drawEquity(r.dates, r.nav, r.benchmark_nav, r.regime, r.capital);
 
     // walk-forward
@@ -457,7 +471,7 @@
 
     const mc = r.monte_carlo;
     if (mc && mc.paths) {
-      $("#mc-sub").textContent = `${mc.paths} bootstrapped paths of the realized returns. P(ending below capital) ${fmt.pct0(mc.prob_loss, 0)} · median max drawdown ${fmt.pct0(mc.median_max_drawdown)} · terminal p5 ${fmt.money(mc.terminal.p5)} / p50 ${fmt.money(mc.terminal.p50)} / p95 ${fmt.money(mc.terminal.p95)}`;
+      $("#mc-sub").textContent = `The fund's own weekly returns, reshuffled ${mc.paths} ways. In ${fmt.pct0(mc.prob_loss, 0)} of those histories it ends below where it started; the middle 90% finish between ${fmt.money(mc.terminal.p5)} and ${fmt.money(mc.terminal.p95)}.`;
       lineChart($("#mc-chart"), { dates: r.dates, series: [{ name: "Median path", short: "p50", cls: "fund", values: mc.bands.p50 }, { name: "Realized", cls: "bench", values: r.nav }], bands: mc.bands, baseline: r.capital, height: 240, actionsEl: $("#mc-actions"), legendEl: $("#mc-legend") });
       $("#mc-legend").innerHTML += `<span><span class="sw" style="background:var(--fund);opacity:.25;height:10px"></span>p5–p95</span><span><span class="sw" style="background:var(--fund);opacity:.45;height:10px"></span>p25–p75</span>`;
     } else { $("#mc-sub").textContent = "not enough periods"; $("#mc-chart").innerHTML = ""; }
@@ -477,22 +491,23 @@
   const scrub = $("#scrub");
   scrub.oninput = () => { state.cycleIdx = +scrub.value; renderCommittee(); };
   $("#scrub-prev").onclick = () => { state.cycleIdx = Math.max(0, state.cycleIdx - 1); renderCommittee(); };
-  $("#scrub-next").onclick = () => { state.cycleIdx = Math.min(state.records.length - 1, state.cycleIdx + 1); renderCommittee(); };
+  $("#scrub-next").onclick = () => { state.cycleIdx = Math.min(state.transcript.records.length - 1, state.cycleIdx + 1); renderCommittee(); };
 
   function analystDisplay(name) { return (state.meta?.analysts || []).find((a) => a.name === name)?.display || name; }
 
   function renderCommittee() {
-    const recs = state.records; if (!recs.length) return;
+    const recs = state.transcript ? state.transcript.records : []; if (!recs.length) return;
+    $("#transcript-source").textContent = `Reading: ${state.transcript.label}`;
     scrub.max = recs.length - 1; scrub.value = state.cycleIdx;
     const rec = recs[state.cycleIdx], v = rec.verdict, cio = v.cio;
-    $("#scrub-date").textContent = `${rec.as_of}  (${state.cycleIdx + 1}/${recs.length})`;
-    $("#cio-title").textContent = `CIO memo — ${rec.as_of}`;
-    $("#cio-source").textContent = cio.source === "llm" ? "LLM chair" : "rules chair";
+    $("#scrub-date").textContent = `${rec.as_of} · ${state.cycleIdx + 1} of ${recs.length}`;
+    $("#cio-title").textContent = `The CIO's memo · ${rec.as_of}`;
+    $("#cio-source").textContent = cio.source === "llm" ? "written by AI" : "written by rules";
     const expo = v.exposure_multiplier != null ? v.exposure_multiplier : cio.exposure_multiplier;
     $("#cio-memo").innerHTML = `${esc(cio.memo)}<div class="meta">regime <b>${cio.regime}</b> · exposure ×${expo.toFixed(2)}${v.board ? ` <span class="muted">(CIO asked ×${cio.exposure_multiplier.toFixed(2)})</span>` : ""} · NAV ${fmt.money(rec.nav)} · drawdown ${fmt.pct0(rec.drawdown)} · ${rec.orders.length} orders · costs ${fmt.money(rec.costs)}</div>`;
     $("#cio-kv").innerHTML = Object.keys(cio.overrides || {}).length ? `<dt>overrides</dt><dd>${Object.entries(cio.overrides).map(([t, why]) => `<div><b>${t}</b> — ${esc(why)}</div>`).join("")}</dd>` : "";
     renderBoard(v);
-    $("#redteam").innerHTML = v.red_team.length ? v.red_team.map((n) => `<div class="note"><div class="head"><span>${n.ticker} <span class="muted" style="font-weight:400">consensus ${fmt.signed(n.consensus)}</span></span><span class="${n.haircut >= 0.4 ? "loss" : n.haircut >= 0.15 ? "warn" : "gain"}">haircut ${fmt.pct0(n.haircut, 0)}</span></div><div class="body">${esc(n.strongest_objection)}${n.what_would_change_my_mind ? `<div class="muted" style="margin-top:4px">would change my mind: ${esc(n.what_would_change_my_mind)}</div>` : ""}</div></div>`).join("") : `<div class="empty">no positions strong enough to attack</div>`;
+    $("#redteam").innerHTML = v.red_team.length ? v.red_team.map((n) => `<div class="note"><div class="head"><span>${n.ticker} <span class="muted" style="font-weight:400">consensus ${fmt.signed(n.consensus)}</span></span><span class="${n.haircut >= 0.4 ? "loss" : n.haircut >= 0.15 ? "warn" : "gain"}">haircut ${fmt.pct0(n.haircut, 0)}</span></div><div class="body">${esc(n.strongest_objection)}${n.what_would_change_my_mind ? `<div class="muted" style="margin-top:4px">would change my mind: ${esc(n.what_would_change_my_mind)}</div>` : ""}</div></div>`).join("") : `<div class="empty">No position was big enough to attack.</div>`;
 
     // analyst views grouped by pod
     let html = "";
@@ -520,8 +535,8 @@
       tickers.map((t) => { const fw = rec.final_weights[t] ?? 0, tw = rec.target_weights[t] ?? 0; return `<tr><td class="mono">${t}</td><td class="muted">${esc(rec.sectors[t] || "")}</td><td class="num ${cls(v.convictions[t])}">${fmt.signed(v.convictions[t])}</td><td class="num">${fmt.pct(tw)}</td><td class="num ${Math.abs(fw - tw) > 1e-6 ? "warn" : ""}">${fmt.pct(fw)}</td><td class="num">${rec.positions[t] ?? 0}</td></tr>`; }).join("") + `</table>`;
 
     $("#orders-table").innerHTML = rec.fills.length ? `<table><tr><th>side</th><th>ticker</th><th class="num">qty</th><th class="num">ref</th><th class="num">fill</th><th class="num">cost</th></tr>` +
-      rec.fills.map((f, i) => `<tr><td class="${f.side === "buy" ? "gain" : "loss"}">${f.side}</td><td class="mono">${f.ticker}</td><td class="num">${f.quantity}</td><td class="num">${fmt.num(rec.orders[i]?.reference_price)}</td><td class="num">${fmt.num(f.price)}</td><td class="num">${fmt.money(f.commission + f.slippage_cost)}</td></tr>`).join("") + `</table>` : `<div class="empty">no trades — the book was inside its no-trade band</div>`;
-    $("#risk-events").innerHTML = rec.risk_events.length ? rec.risk_events.map((e) => `<div class="note"><div class="head"><span>${e.limit}${e.ticker ? ` · ${e.ticker}` : ""}</span><span class="num">${fmt.num(e.before)} → ${fmt.num(e.after)}</span></div>${e.note ? `<div class="body">${esc(e.note)}</div>` : ""}</div>`).join("") : `<div class="muted" style="font-size:13px">no limits fired</div>`;
+      rec.fills.map((f, i) => `<tr><td class="${f.side === "buy" ? "gain" : "loss"}">${f.side}</td><td class="mono">${f.ticker}</td><td class="num">${f.quantity}</td><td class="num">${fmt.num(rec.orders[i]?.reference_price)}</td><td class="num">${fmt.num(f.price)}</td><td class="num">${fmt.money(f.commission + f.slippage_cost)}</td></tr>`).join("") + `</table>` : `<div class="empty">No trades — every position was already close enough to its target.</div>`;
+    $("#risk-events").innerHTML = rec.risk_events.length ? rec.risk_events.map((e) => `<div class="note"><div class="head"><span>${e.limit}${e.ticker ? ` · ${e.ticker}` : ""}</span><span class="num">${fmt.num(e.before)} → ${fmt.num(e.after)}</span></div>${e.note ? `<div class="body">${esc(e.note)}</div>` : ""}</div>`).join("") : `<div class="muted" style="font-size:13px">No limit fired.</div>`;
   }
 
   function renderTrack(rec) {
@@ -551,9 +566,9 @@
     $("#board-source").textContent = llm ? `${models.size} model${models.size === 1 ? "" : "s"} voting` : "rules board";
     const dir = b.stance === "cut risk" ? "loss" : b.stance === "add risk" ? "gain" : "";
     $("#board-resolution").innerHTML = `<div class="resolution">
-        <div><div class="label muted" style="font-size:10.5px;letter-spacing:.1em;text-transform:uppercase">Resolution</div>
-             <div class="big ${dir}">${fmt.pct0(b.exposure, 0)} deployed</div></div>
-        <div class="arrow">CIO asked ${fmt.pct0(b.cio_proposal, 0)} →</div>
+        <div><div class="label">The Council decided</div>
+             <div class="big ${dir}">${fmt.pct0(b.exposure, 0)} invested</div></div>
+        <div class="arrow">the CIO asked for ${fmt.pct0(b.cio_proposal, 0)}</div>
         <div class="text">${esc(b.summary)}</div></div>`;
     $("#board-votes").innerHTML = b.votes.map((x) => {
       const s = x.stance === "cut risk" ? "bearish" : x.stance === "add risk" ? "bullish" : "neutral";
@@ -573,7 +588,7 @@
   // Risk & book
   // =====================================================================
   function renderRisk() {
-    const recs = state.records; if (!recs.length) return;
+    const recs = state.result ? state.result.records : []; if (!recs.length) return;
     const rec = recs[recs.length - 1], spec = state.funds.find((f) => f.name === rec.fund);
     const eq = rec.nav, pos = Object.entries(rec.positions);
     const gross = pos.reduce((a, [t, s]) => a + Math.abs(s * rec.marks[t]), 0) / eq, net = pos.reduce((a, [t, s]) => a + s * rec.marks[t], 0) / eq;
@@ -603,7 +618,7 @@
   // =====================================================================
   $("#btn-run").onclick = async () => {
     const body = { fund: $("#p-fund").value, tickers: $("#p-tickers").value, date: $("#p-date").value || null, provider: $("#p-provider").value };
-    $("#btn-run").disabled = true; $("#run-status").textContent = "committee sitting…";
+    $("#btn-run").disabled = true; $("#run-status").textContent = "The committee is sitting…";
     try {
       const job = await api("/api/run", { method: "POST", body: JSON.stringify(body) });
       if (job.status === "done") { $("#run-status").textContent = `done — NAV ${fmt.money(job.result.nav)} · ${job.result.orders.length} orders · regime ${job.result.verdict.cio.regime}`; $("#btn-run").disabled = false; await loadPaper(); return; }
@@ -628,22 +643,20 @@
     state.paper = led;
     const cycles = led.cycles;
     if (cycles.length < 2) {
-      $("#paper-chart").innerHTML = `<div class="empty">${cycles.length ? `One meeting on the books (${cycles[0].as_of}, NAV ${fmt.money(cycles[0].nav)}). Run another cycle with a later date and the curve starts here.` : "No meetings yet — run a cycle to open the books."}</div>`;
+      $("#paper-chart").innerHTML = `<div class="empty">${cycles.length ? `One meeting on the books (${cycles[0].as_of}, NAV ${fmt.money(cycles[0].nav)}). Run another cycle with a later date and the curve starts here.` : "No meetings yet. Press Hold the next meeting to open the books."}</div>`;
     } else {
       lineChart($("#paper-chart"), { dates: cycles.map((c) => c.as_of), series: [{ name: "Paper NAV", short: "NAV", cls: "fund", values: cycles.map((c) => c.nav), area: "fund" }], baseline: cycles[0].nav, height: 240, regime: cycles.map((c) => c.regime || "neutral") });
     }
     // default the next as-of date to a week after the last meeting, so "run one cycle" naturally advances the book
     if (cycles.length) { const d = new Date(cycles[cycles.length - 1].as_of); d.setDate(d.getDate() + 7); $("#p-date").value = d.toISOString().slice(0, 10); }
     $("#paper-book").innerHTML = led.book ? `<dl class="kv"><dt>as of</dt><dd>${led.book.as_of}</dd><dt>cash</dt><dd>${fmt.money(led.book.cash)}</dd><dt>positions</dt><dd>${Object.keys(led.book.positions).length}</dd></dl>
-      <table style="margin-top:8px"><tr><th>ticker</th><th class="num">shares</th><th class="num">avg cost</th></tr>${Object.values(led.book.positions).map((p) => `<tr><td class="mono">${p.ticker}</td><td class="num ${cls(p.shares)}">${p.shares}</td><td class="num">${fmt.num(p.avg_cost)}</td></tr>`).join("")}</table>` : `<div class="empty">no book yet — run a cycle</div>`;
+      <table style="margin-top:8px"><tr><th>ticker</th><th class="num">shares</th><th class="num">avg cost</th></tr>${Object.values(led.book.positions).map((p) => `<tr><td class="mono">${p.ticker}</td><td class="num ${cls(p.shares)}">${p.shares}</td><td class="num">${fmt.num(p.avg_cost)}</td></tr>`).join("")}</table>` : `<div class="empty">No positions yet.</div>`;
     $("#paper-cycles").innerHTML = cycles.length ? `<table><tr><th>date</th><th>regime</th><th class="num">NAV</th><th class="num">cash</th><th class="num">orders</th><th class="num">costs</th><th></th></tr>` +
-      cycles.slice().reverse().map((c) => `<tr><td class="mono">${c.as_of}</td><td>${c.regime || ""}</td><td class="num">${fmt.money(c.nav)}</td><td class="num">${fmt.money(c.cash)}</td><td class="num">${c.n_orders}</td><td class="num">${fmt.money(c.costs)}</td><td><button class="btn small" data-cycle="${c.id}">transcript</button></td></tr>`).join("") + `</table>` : `<div class="empty">no meetings yet</div>`;
+      cycles.slice().reverse().map((c) => `<tr><td class="mono">${c.as_of}</td><td>${c.regime || ""}</td><td class="num">${fmt.money(c.nav)}</td><td class="num">${fmt.money(c.cash)}</td><td class="num">${c.n_orders}</td><td class="num">${fmt.money(c.costs)}</td><td><button class="btn small" data-cycle="${c.id}">Read</button></td></tr>`).join("") + `</table>` : `<div class="empty">No meetings yet.</div>`;
     $$("button[data-cycle]", $("#paper-cycles")).forEach((b) => b.onclick = async () => {
       const recs = await Promise.all(cycles.map((c) => api(`/api/cycles/${c.id}`)));
-      state.records = recs; state.cycleIdx = recs.findIndex((r) => r.id === b.dataset.cycle); state.source = "paper";
-      $("#committee-empty").classList.add("hidden"); $("#committee-body").classList.remove("hidden");
-      $("#risk-empty").classList.add("hidden"); $("#risk-body").classList.remove("hidden");
-      renderCommittee(); renderRisk(); showView("committee");
+      openTranscript(recs, `Paper fund · ${$("#p-fund").value} · ${recs.length} meetings`, recs.findIndex((r) => r.id === b.dataset.cycle));
+      showView("committee");
     });
   }
 
@@ -696,7 +709,7 @@
       state.meta = await api("/api/meta");
       const pill = $("#llm-pill");
       pill.classList.toggle("ok", state.meta.llm_available);
-      $("#llm-text").textContent = state.meta.llm_available ? `model ${state.meta.current_model}` : `no LLM key — quant + rules only`;
+      $("#llm-text").textContent = state.meta.llm_available ? `model ${state.meta.current_model}` : `no AI key — rules only`;
       paintBudget(state.meta.budget);
       const bi = state.meta.build || {};
       if (bi.commit) $("#build-stamp").textContent = `${bi.env} · ${bi.commit}`;
@@ -716,7 +729,7 @@
       syncProvider();
       const last = await api("/api/ledger");
       const bt = last.backtests && last.backtests[0];
-      if (bt) { try { const res = await api(`/api/backtests/${bt.id}`); setResult(res, "backtest"); $("#f-fund").value = res.fund; $("#f-tickers").value = res.universe.join(","); $("#f-start").value = res.start; $("#f-end").value = res.end; $("#f-provider").value = res.provider; } catch {} }
+      if (bt) { try { const res = await api(`/api/backtests/${bt.id}`); setResult(res); $("#f-fund").value = res.fund; $("#f-tickers").value = res.universe.join(","); $("#f-start").value = res.start; $("#f-end").value = res.end; $("#f-provider").value = res.provider; } catch {} }
       let view = "council"; try { view = localStorage.getItem("consilium-view") || view; } catch {}
       showView(view);
     } catch (e) { $("#bt-status").innerHTML = `<span class="loss">cannot reach the API: ${esc(e.message)}</span>`; }
