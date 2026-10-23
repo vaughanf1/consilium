@@ -59,6 +59,21 @@ class BacktestResult(BaseModel):
     llm_used: bool = False
 
 
+def point_in_time_warning(spec, provider) -> str | None:
+    """Silent only when every analyst that reads fundamentals is fed by a
+    provider that guarantees them point in time. One provider feeds a whole
+    run, so that is: no such analyst, or a point-in-time provider (EDGAR, or
+    the synthetic market, which has no filing lag)."""
+    from consilium.analysts import ANALYST_REGISTRY
+    readers = [n for n in spec.analyst_names if ANALYST_REGISTRY[n].needs_fundamentals]
+    if not readers or getattr(provider, "point_in_time", False):
+        return None
+    return (f"{provider.name} fundamentals are latest-only, not point-in-time: fundamental analysts in this "
+            "backtest see today's ratios on past dates. Price-based signals are unaffected. Treat "
+            "fundamental-driven results as indicative, not evidence. Use --provider edgar for "
+            "as-filed fundamentals.")
+
+
 def rebalance_grid(days: list[str], cadence: str) -> list[str]:
     if cadence == "daily":
         return list(days)
@@ -86,13 +101,8 @@ def backtest_fund(fund: Fund, start: str, end: str, provider: DataProvider, univ
         raise ValueError(f"{spec.name}: no {spec.benchmark} bars in [{start}, {end}] — cannot build the trading grid")
     grid = rebalance_grid(days, spec.rebalance)
 
-    pit_warning = None
-    if not provider.point_in_time and any(
-            __import__("consilium.analysts", fromlist=["ANALYST_REGISTRY"]).ANALYST_REGISTRY[n].needs_fundamentals
-            for n in spec.analyst_names):
-        pit_warning = (f"{provider.name} fundamentals are latest-only, not point-in-time: fundamental analysts in this "
-                       "backtest see today's ratios on past dates. Price-based signals are unaffected. Treat "
-                       "fundamental-driven results as indicative, not evidence.")
+    pit_warning = point_in_time_warning(spec, provider)
+    if pit_warning:
         warnings.warn(pit_warning, stacklevel=2)
 
     # Silenced only by a membership file actually in use — or by a provider

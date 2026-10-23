@@ -391,3 +391,48 @@ Demo runtime with the scorekeeper on every meeting: 0.7 s.
 
 Tests: 84 (73 before + 11 in `tests/test_track_record.py`, including an exact
 regression against NAVs measured before this code existed).
+
+---
+
+## 16. Measured numbers — 23 October 2026: point-in-time fundamentals from SEC EDGAR (Workstream 4)
+
+**What changed.** `--provider edgar` takes prices and profiles from yfinance
+and fundamentals from the SEC's XBRL companyfacts API (`consilium/data/edgar.py`).
+Every fact is indexed by its **filing date**. On any date a backtest sees only
+what had been filed by then: a December year-end filed in February is
+invisible in January, and a restatement replaces the original only from the
+day it was filed.
+
+- **Flows** (revenue, earnings, cash flow) are the latest fiscal year filed;
+  **stocks** (equity, debt, cash) are the latest balance sheet filed. Ratios
+  use the close on the date. Flows are annual on purpose: stitching 10-Qs into
+  trailing-twelve-month figures would be fresher, but is easy to get subtly
+  wrong.
+- **Market cap:** filed share counts are converted to yfinance's
+  split-adjusted basis, using the split history cached with the same price
+  window.
+- **Courtesy and caching:** the SEC requires a User-Agent with a contact
+  email (`CONSILIUM_SEC_USER_AGENT="Name you@example.com"`). Requests are
+  capped at 8 a second (the SEC allows 10). Responses are cached in SQLite
+  (`~/.consilium/cache/data/edgar.sqlite`). A cached company answers any date
+  up to the day it was fetched and is refetched only for later dates, so a
+  backtest over the past replays offline and identically.
+- **The point-in-time warning** is now a single rule
+  (`backtest.engine.point_in_time_warning`): it is silent only when no
+  analyst reads fundamentals, or the run's one provider guarantees them
+  point in time. EDGAR does; yfinance does not, so keyless/yfinance runs warn
+  exactly as before. The message now ends by pointing at `--provider edgar`.
+- **Fixed in passing: a latent lookahead in the data cache.**
+  `CachedProvider` cached point-in-time fundamentals per *month*. A run that
+  asked for the 29th first would then hand the 29th's numbers to any later
+  run asking for the 1st. It now keys them on the exact date. No current
+  configuration could hit this, because only latest-only yfinance was ever
+  cached.
+
+**Measured:** `consilium demo` is unchanged to the dollar (+17.8%, Sharpe 1.09,
+$117,847.80); it does not use EDGAR. **No live EDGAR backtest was run.**
+The SEC rejected a User-Agent without a contact email (HTTP 403), and no
+email was supplied for this session. All EDGAR behaviour above is verified
+against a fixture in the tests, not against live SEC data.
+
+Tests: 93 (84 before + 9 in `tests/test_edgar.py`; no network).

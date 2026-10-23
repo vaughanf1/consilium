@@ -84,6 +84,15 @@ class YFinanceProvider:
             dividend_yield=_f(i.get("dividendYield")), beta=_f(i.get("beta")),
         )
 
+    def splits(self, ticker: str, end: str | None = None) -> list[tuple[str, float]]:
+        """(date, ratio) for every split — what turns a filed share count into
+        today's split-adjusted basis (see data/edgar.py)."""
+        try:
+            s = self._yf.Ticker(ticker).splits
+        except Exception as exc:
+            raise RuntimeError(f"yfinance splits failed for {ticker}: {exc}") from exc
+        return [(ts.strftime("%Y-%m-%d"), float(r)) for ts, r in s.items() if r and float(r) > 0] if s is not None else []
+
     def profile(self, ticker: str) -> Profile | None:
         i = self._get_info(ticker)
         return Profile(ticker=ticker, name=i.get("shortName") or i.get("longName"),

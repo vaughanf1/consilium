@@ -244,7 +244,7 @@ def main(argv=None) -> None:
     def common(sp, mandate_required=True):
         sp.add_argument("mandate", nargs=None if mandate_required else "?", help="mandate name or YAML path")
         sp.add_argument("--tickers", help="comma/space separated universe")
-        sp.add_argument("--provider", default="auto", help="synthetic | yfinance (default auto → yfinance)")
+        sp.add_argument("--provider", default="auto", help="synthetic | yfinance | edgar (yfinance prices + as-filed SEC fundamentals; default auto → yfinance)")
         sp.add_argument("--model", help="LLM for the personas, e.g. claude-sonnet-5 or ollama:llama3.1")
         sp.add_argument("--json", action="store_true", help="print the full JSON to stdout")
         sp.add_argument("--membership", help="CSV of index membership spells (ticker,start_date,end_date); "
