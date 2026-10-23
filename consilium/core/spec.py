@@ -128,6 +128,8 @@ class FundSpec(BaseModel):
     capital: float = Field(default=100_000.0, gt=0)
     rebalance: Literal["daily", "weekly", "biweekly", "monthly"] = "weekly"
     benchmark: str = "SPY"
+    membership: str | None = Field(default=None, description="CSV of index membership spells (ticker,start_date,end_date); "
+                                                             "a relative path resolves against the mandate file")
 
     @field_validator("benchmark")
     @classmethod
@@ -184,6 +186,9 @@ def normalize_universe(tickers) -> list[str]:
 def load_spec(path: str | Path) -> FundSpec:
     with open(path) as f:
         data = yaml.safe_load(f) or {}
+    m = data.get("membership")
+    if m and not Path(m).expanduser().is_absolute():
+        data["membership"] = str((Path(path).resolve().parent / m).resolve())
     return FundSpec(**data)
 
 
@@ -195,8 +200,12 @@ class Fund:
     """The living fund: its spec plus instantiated analysts, built once per run
     so their caches survive across cycles."""
 
-    def __init__(self, spec: FundSpec, analysts: dict[str, list[Analyst]] | None = None, model: str | None = None) -> None:
+    def __init__(self, spec: FundSpec, analysts: dict[str, list[Analyst]] | None = None, model: str | None = None,
+                 membership=None) -> None:
+        from consilium.data.membership import Membership
         self.spec = spec
+        # an explicit membership (the CLI's --membership) wins over the mandate's
+        self.membership: Membership | None = membership or (Membership.from_csv(spec.membership) if spec.membership else None)
         self.strategies: list[tuple[StrategySpec, list[Analyst]]] = []
         shared: dict[str, Analyst] = {}
         for st in spec.strategies:

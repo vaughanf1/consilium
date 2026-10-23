@@ -14,6 +14,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel
 
+from consilium.core.models import RiskEvent
 from consilium.core.spec import PortfolioPolicy
 
 
@@ -62,3 +63,19 @@ def apply_rebalance_band(targets: dict[str, float], current: dict[str, float], b
         else:
             out[t] = have
     return out
+
+
+def apply_exit_only(targets: dict[str, float], current: dict[str, float], names: set[str]) -> tuple[dict[str, float], list[RiskEvent]]:
+    """A held name that has left the index may be sold but takes no new capital:
+    its target stays on the side it is already on and no larger than it is now.
+    What that withholds stays in cash."""
+    out = dict(targets)
+    events: list[RiskEvent] = []
+    for t in sorted(names):
+        want, have = targets.get(t, 0.0), current.get(t, 0.0)
+        new = 0.0 if want * have < 0 else (have if abs(want) > abs(have) else want)
+        if new != want:
+            events.append(RiskEvent(limit="index_exit_only", ticker=t, before=want, after=new,
+                                    note="left the index: may be sold, takes no new capital"))
+        out[t] = new
+    return out, events

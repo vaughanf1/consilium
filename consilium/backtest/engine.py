@@ -22,6 +22,7 @@ from consilium.committee import Committee
 from consilium.core.models import CycleRecord
 from consilium.core.spec import Fund, normalize_universe
 from consilium.data.features import PriceBook
+from consilium.data.membership import SURVIVORSHIP_WARNING
 from consilium.data.protocol import DataProvider
 from consilium.execution.broker import SimBroker
 from consilium.pipeline.cycle import CycleContext, run_cycle
@@ -39,6 +40,8 @@ class BacktestResult(BaseModel):
     capital: float
     provider: str
     point_in_time_warning: str | None = None
+    survivorship_warning: str | None = None
+    membership: str | None = None     # the membership file in force, if any
     dates: list[str]
     nav: list[float]
     benchmark_nav: list[float]
@@ -92,6 +95,13 @@ def backtest_fund(fund: Fund, start: str, end: str, provider: DataProvider, univ
                        "fundamental-driven results as indicative, not evidence.")
         warnings.warn(pit_warning, stacklevel=2)
 
+    # Silenced only by a membership file actually in use — or by a provider
+    # whose universe cannot have survivors (the synthetic market invents its names).
+    surv_warning = None
+    if fund.membership is None and not getattr(provider, "survivorship_free", False):
+        surv_warning = SURVIVORSHIP_WARNING
+        warnings.warn(surv_warning, stacklevel=2)
+
     committee = Committee(fund, model=model)
     ctx = CycleContext(fund=fund, book=book, committee=committee, high_water=spec.capital)
     broker = SimBroker(cash=spec.capital, costs=spec.costs)
@@ -134,6 +144,7 @@ def backtest_fund(fund: Fund, start: str, end: str, provider: DataProvider, univ
     return BacktestResult(
         fund=spec.name, start=grid[0], end=grid[-1], rebalance=spec.rebalance, benchmark=spec.benchmark,
         universe=universe, capital=spec.capital, provider=provider.name, point_in_time_warning=pit_warning,
+        survivorship_warning=surv_warning, membership=fund.membership.source if fund.membership else None,
         dates=grid, nav=nav, benchmark_nav=bnav, gross_exposure=gross, net_exposure=net, drawdown=dd, regime=regime,
         metrics=metrics, in_sample=in_s, out_of_sample=out_s,
         rolling_sharpe=rolling_sharpe(spec.capital, nav, spec.rebalance),

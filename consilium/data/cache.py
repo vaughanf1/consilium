@@ -22,6 +22,7 @@ class CachedProvider:
         self._dir.mkdir(parents=True, exist_ok=True)
         self.name = inner.name
         self.point_in_time = inner.point_in_time
+        self.survivorship_free = getattr(inner, "survivorship_free", False)
         self._mem: dict[str, object] = {}
 
     def _key(self, method: str, **params) -> Path:
