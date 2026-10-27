@@ -50,7 +50,7 @@
         <summary>More options</summary>
         <div class="more-body">
           <div class="field"><label for="c-date">Meeting date</label><input id="c-date" type="date"></div>
-          <div class="field"><label for="c-provider">Data</label><select id="c-provider"><option value="synthetic">Synthetic (offline)</option><option value="yfinance">Real prices (yfinance)</option></select></div>
+          <div class="field"><label for="c-provider">Data</label><select id="c-provider"><option value="synthetic">Synthetic (offline)</option><option value="yfinance">Real prices (yfinance)</option><option value="edgar" class="edgar-only hidden">Real prices + as-filed SEC fundamentals (EDGAR)</option></select></div>
         </div>
       </details>
     </div>
@@ -90,13 +90,14 @@
         <div class="more-body">
           <div class="field"><label for="f-start">From</label><input id="f-start" type="date" value="2024-01-01"></div>
           <div class="field"><label for="f-end">To</label><input id="f-end" type="date" value="2025-06-30"></div>
-          <div class="field"><label for="f-provider">Data</label><select id="f-provider"><option value="synthetic">Synthetic (offline)</option><option value="yfinance">Real prices (yfinance)</option></select></div>
+          <div class="field"><label for="f-provider">Data</label><select id="f-provider"><option value="synthetic">Synthetic (offline)</option><option value="yfinance">Real prices (yfinance)</option><option value="edgar" class="edgar-only hidden">Real prices + as-filed SEC fundamentals (EDGAR)</option></select></div>
           <div class="field"><label for="f-model">AI model</label><select id="f-model"></select></div>
         </div>
       </details>
     </div>
     <div class="progress hidden" id="bt-progress"><i style="width:0%"></i></div>
     <div class="status-line" id="bt-status"></div>
+    <div class="status-line" id="bt-pit" title="What point-in-time enforcement did on this run"></div>
     <div id="bt-warning" class="callout warn hidden"></div>
 
     <div id="research-empty" class="card"><div class="empty">Choose a fund and some stocks, then press <b>Run backtest</b>. The chart draws itself one meeting at a time.</div></div>
@@ -226,7 +227,7 @@
         <summary>More options</summary>
         <div class="more-body">
           <div class="field"><label for="p-date">Meeting date</label><input id="p-date" type="date"></div>
-          <div class="field"><label for="p-provider">Data</label><select id="p-provider"><option value="synthetic">Synthetic (offline)</option><option value="yfinance">Real prices (yfinance)</option></select></div>
+          <div class="field"><label for="p-provider">Data</label><select id="p-provider"><option value="synthetic">Synthetic (offline)</option><option value="yfinance">Real prices (yfinance)</option><option value="edgar" class="edgar-only hidden">Real prices + as-filed SEC fundamentals (EDGAR)</option></select></div>
           <div class="field"><label>&nbsp;</label><button class="btn danger small" id="btn-reset">Reset this fund's book</button></div>
         </div>
       </details>

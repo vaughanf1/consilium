@@ -72,7 +72,9 @@ class LLMAnalyst(Analyst):
             parts.append(render_fundamentals(f, ctx.profile(ticker)))
         else:
             p = ctx.profile(ticker)
-            parts.append(f"Company: {p.name if p and p.name else ticker} ({ticker}). No fundamentals available.")
+            why = ("No fundamentals available." if ticker not in ctx.withheld else
+                   "Fundamentals withheld: none were public as of this date. Reason from price action only.")
+            parts.append(f"Company: {p.name if p and p.name else ticker} ({ticker}). {why}")
         if self.sees_market and m is not None:
             parts.append(m.render_coarse())
         if ctx.reflection.get(self.name):

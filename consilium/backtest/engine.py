@@ -30,6 +30,21 @@ from consilium.pipeline.cycle import CycleContext, run_cycle
 logger = logging.getLogger(__name__)
 
 
+class PointInTime(BaseModel):
+    """What point-in-time enforcement did on this run. Prices are always
+    point in time (the PriceBook never returns a bar after the date).
+    Fundamentals are either as-filed (EDGAR, synthetic), withheld (a
+    latest-only source on past dates: the analysts that read them abstained),
+    or not needed (no analyst reads them)."""
+
+    prices: str = "point-in-time"
+    fundamentals: str                 # "as-filed" | "withheld" | "not-needed"
+    provider: str
+    withheld_rows: int = 0            # (ticker, date) rows refused
+    meetings_affected: int = 0        # meetings on which at least one row was refused
+    meetings: int = 0
+
+
 class BacktestResult(BaseModel):
     fund: str
     start: str
@@ -39,6 +54,7 @@ class BacktestResult(BaseModel):
     universe: list[str]
     capital: float
     provider: str
+    point_in_time: PointInTime | None = None
     point_in_time_warning: str | None = None
     survivorship_warning: str | None = None
     membership: str | None = None     # the membership file in force, if any
@@ -59,19 +75,45 @@ class BacktestResult(BaseModel):
     llm_used: bool = False
 
 
+def reads_fundamentals(spec) -> bool:
+    from consilium.analysts import ANALYST_REGISTRY
+    return any(ANALYST_REGISTRY[n].needs_fundamentals for n in spec.analyst_names)
+
+
 def point_in_time_warning(spec, provider) -> str | None:
     """Silent only when every analyst that reads fundamentals is fed by a
     provider that guarantees them point in time. One provider feeds a whole
     run, so that is: no such analyst, or a point-in-time provider (EDGAR, or
-    the synthetic market, which has no filing lag)."""
-    from consilium.analysts import ANALYST_REGISTRY
-    readers = [n for n in spec.analyst_names if ANALYST_REGISTRY[n].needs_fundamentals]
-    if not readers or getattr(provider, "point_in_time", False):
+    the synthetic market, which has no filing lag). Otherwise the run still
+    holds the line — the rows are withheld — and this says so up front."""
+    if not reads_fundamentals(spec) or getattr(provider, "point_in_time", False):
         return None
-    return (f"{provider.name} fundamentals are latest-only, not point-in-time: fundamental analysts in this "
-            "backtest see today's ratios on past dates. Price-based signals are unaffected. Treat "
-            "fundamental-driven results as indicative, not evidence. Use --provider edgar for "
-            "as-filed fundamentals.")
+    return (f"{provider.name} fundamentals are latest-only, so on past dates they are withheld: analysts that "
+            "read them abstain rather than see today's ratios, and the committee runs on price-based signals. "
+            "Set CONSILIUM_SEC_USER_AGENT (or use --provider edgar) for as-filed SEC fundamentals.")
+
+
+def point_in_time_report(spec, provider, records: list[CycleRecord]) -> tuple[PointInTime, str | None]:
+    """The structured account of what enforcement did, plus the message to
+    show when any row was withheld (None when nothing was)."""
+    withheld = sum(len(r.withheld) for r in records)
+    affected = sum(1 for r in records if r.withheld)
+    if not reads_fundamentals(spec):
+        kind = "not-needed"
+    elif withheld:
+        kind = "withheld"
+    else:
+        kind = "as-filed"
+    report = PointInTime(fundamentals=kind, provider=provider.name, withheld_rows=withheld,
+                         meetings_affected=affected, meetings=len(records))
+    message = None
+    if withheld:
+        message = (f"Point-in-time enforced: {withheld} fundamentals row{'s' if withheld != 1 else ''} on "
+                   f"{affected} of {len(records)} meetings were withheld because {provider.name} publishes them "
+                   "latest-only and they were not knowable on the meeting date. The analysts that read them "
+                   "abstained; the committee ran on price-based signals. Set CONSILIUM_SEC_USER_AGENT (or use "
+                   "--provider edgar) for as-filed SEC fundamentals.")
+    return report, message
 
 
 def rebalance_grid(days: list[str], cadence: str) -> list[str]:
@@ -133,6 +175,9 @@ def backtest_fund(fund: Fund, start: str, end: str, provider: DataProvider, univ
         if on_cycle:
             on_cycle(i, len(grid), rec)
 
+    # The up-front warning said what WOULD happen; the report says what did.
+    pit_report, pit_warning = point_in_time_report(spec, provider, records)
+
     yrs = _years(grid[0], grid[-1])
     turnovers = [r.turnover for r in records]
     costs = sum(r.costs for r in records)
@@ -153,7 +198,8 @@ def backtest_fund(fund: Fund, start: str, end: str, provider: DataProvider, univ
 
     return BacktestResult(
         fund=spec.name, start=grid[0], end=grid[-1], rebalance=spec.rebalance, benchmark=spec.benchmark,
-        universe=universe, capital=spec.capital, provider=provider.name, point_in_time_warning=pit_warning,
+        universe=universe, capital=spec.capital, provider=provider.name,
+        point_in_time=pit_report, point_in_time_warning=pit_warning,
         survivorship_warning=surv_warning, membership=fund.membership.source if fund.membership else None,
         dates=grid, nav=nav, benchmark_nav=bnav, gross_exposure=gross, net_exposure=net, drawdown=dd, regime=regime,
         metrics=metrics, in_sample=in_s, out_of_sample=out_s,

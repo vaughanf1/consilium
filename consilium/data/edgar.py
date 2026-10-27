@@ -317,7 +317,7 @@ class EdgarProvider:
         ebitda = op + da if op is not None and da is not None else None
         ev = mcap + (debt or 0.0) - (cash or 0.0) if mcap is not None else None
         return Fundamentals(
-            ticker=ticker, as_of=as_of, point_in_time=True,
+            ticker=ticker, as_of=as_of, known_at=as_of, point_in_time=True,
             market_cap=mcap, pe=ratio(mcap, ni), pb=ratio(mcap, equity), ps=ratio(mcap, rev),
             ev_ebitda=ratio(ev, ebitda), roe=ratio(ni, equity), roic=None,
             gross_margin=ratio(gp, rev), operating_margin=ratio(op, rev), net_margin=ratio(ni, rev),

@@ -153,7 +153,7 @@ fund look worse when it deserves to:
 
 - **Walk-forward.** Metrics for the first half (in-sample) and second half (out-of-sample, re-based). If they disagree, distrust the headline.
 - **Monte Carlo.** 500 bootstrapped alternative histories from the realised returns → probability of loss, median max drawdown, terminal-NAV bands. Literally answers "how lucky was this?"
-- **Point-in-time warnings.** yfinance fundamentals are latest-only, so a value or LLM analyst backtested on them would see today's ratios on past dates. The app says so, in the CLI and the dashboard, rather than quietly producing a flattering number.
+- **Point-in-time, enforced.** Every fundamentals row carries the date it became public. A row the meeting date could not have had is withheld: the analyst abstains, the meeting records why, and the backtest reports how many rows were withheld (CLI, API, dashboard). yfinance fundamentals are latest-only, so on past dates they are withheld rather than shown; SEC EDGAR fundamentals are as-filed and pass. See §18.
 
 ---
 
@@ -239,7 +239,7 @@ the market, and it can show you exactly which analyst was wrong and why.*
 - Do **not** name real investors as the personas — they are style archetypes.
 - Do **not** present synthetic data as real. The app labels it; keep the label.
 - Do **not** say the LLM decides trades. It forms views; deterministic code sizes and executes.
-- Backtests on free fundamentals are not point-in-time. Say so, as the app does.
+- Backtests on free (yfinance) fundamentals do not see them on past dates: they are withheld, and the fundamental analysts abstain. Do not claim a yfinance backtest "used fundamentals"; the app reports exactly what was withheld.
 - A UK-marketed system that generates trade ideas may be a regulated financial promotion. Anyone selling around this should take advice.
 
 ---
@@ -527,3 +527,61 @@ live EDGAR run; see §16).
   measured.
 
 Tests: 93 passing, ~3 s, no network, no keys.
+
+---
+
+## 18. Point-in-time enforced — 27 October 2026
+
+**What changed.** Point-in-time was a *warning*: a yfinance backtest with
+value or LLM analysts still fed them today's ratios on past dates and printed
+a caveat. It is now an *invariant* the code holds by construction.
+
+- **Every fundamentals row carries `known_at`**, the first date its figures
+  were public (`core/models.py`). EDGAR stamps the meeting date (every fact
+  in the row was filed by then). The synthetic market stamps the meeting date
+  (no filing lag by construction). yfinance stamps **the day the figures were
+  downloaded**, whatever date was asked for — that is the truth about a
+  latest-only source. The disk cache stores the stamp, so a replay keeps the
+  original download date rather than the replay's clock.
+- **`AnalysisContext.fundamentals()` refuses any row with `known_at` after
+  the meeting date** (`analysts/base.py`). The row is withheld, the reason is
+  recorded on the context, and the analysts that read fundamentals abstain
+  with that reason (`"fundamentals withheld: the yfinance figures were
+  published 2026-10-27, after 2024-06-03 — not knowable on the meeting
+  date"`). LLM personas are told the figures were withheld and asked to
+  reason from price action only. A row with no provenance is never served.
+  Price-based analysts are untouched: the price book never returns a bar
+  after the date, as before.
+- **The meeting records it.** `CycleRecord.withheld` lists each refused
+  (ticker, reason). The backtest result carries a structured
+  `point_in_time` report — prices, fundamentals (`as-filed` | `withheld` |
+  `not-needed`), rows withheld, meetings affected — and the warning string
+  now states what *happened* rather than what might have. The CLI prints a
+  `point-in-time:` line; the dashboard shows the same under the backtest
+  status.
+- **On today's date yfinance is point in time.** A paper or live run asks
+  for today's figures on today's date, `known_at <= date`, and the row is
+  served. Only backtests over the past are affected, which is the point.
+- **`--provider auto` prefers as-filed fundamentals.** With
+  `CONSILIUM_SEC_USER_AGENT` set, `auto` (the CLI default) builds the EDGAR
+  provider; the API advertises `edgar` in `/api/meta.providers` and the
+  dashboard shows the option. Without it, `auto` is yfinance and the run
+  withholds rather than leaks. An explicit `--provider yfinance` stays
+  yfinance.
+
+**Measured.** `consilium demo` is unchanged (+16.1%, Sharpe 1.04: the
+synthetic market stamps every row knowable on its date, so nothing is
+withheld). A committee-balanced backtest on a latest-only source now reports
+`fundamentals withheld` on every meeting with two names in the universe:
+`withheld_rows = 2 × meetings`; the value analyst abstains on each, the trend
+analyst carries on. The **hosted demo was deployed without an SEC contact**:
+the EDGAR option is hidden there until `CONSILIUM_SEC_USER_AGENT` is set on
+Vercel, and real-data backtests withhold fundamentals as described.
+
+What this does not do: yfinance prices remain dividend-adjusted to the
+download date (returns are correct; historical price *levels*, and so EDGAR
+market caps, are slightly understated for dividend payers), and sector labels
+remain today's. Both are documented limits, not leaks of a future fact into a
+view.
+
+Tests: 103 (93 before + 10 in `tests/test_point_in_time.py`; no network).

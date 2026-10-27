@@ -1,16 +1,18 @@
 """YFinanceProvider — free market data, no key required.
 
 Prices are historical and safe to backtest on. Fundamentals from yfinance are
-LATEST-ONLY (no filing-date history), so `point_in_time=False`: an LLM analyst
-backtested on them sees today's ratios on yesterday's dates. Price-only quant
-models are unaffected; the backtester prints a warning when a mandate mixes
-fundamental analysts with this provider. Plug a point-in-time provider into
-the same protocol for research-grade fundamentals.
+LATEST-ONLY (no filing-date history), so every row is stamped
+`known_at = the day it was downloaded`. On today's date that is point in
+time; on any past date `AnalysisContext` withholds the row, so a backtest
+never sees today's ratios on yesterday's dates (fundamental analysts abstain
+and the run says why). Price-only quant models are unaffected. Use the EDGAR
+provider for as-filed fundamentals on past dates.
 """
 
 from __future__ import annotations
 
 import logging
+from datetime import date as _date
 
 import pandas as pd
 
@@ -33,10 +35,11 @@ class YFinanceProvider:
     name = "yfinance"
     point_in_time = False
 
-    def __init__(self) -> None:
+    def __init__(self, today=None) -> None:
         import yfinance as yf  # imported lazily: the synthetic path never pays for it
         self._yf = yf
         self._info: dict[str, dict] = {}
+        self._today = today or (lambda: _date.today().isoformat())
 
     def prices(self, ticker: str, start: str, end: str) -> list[Bar]:
         end_excl = (pd.Timestamp(end) + pd.Timedelta(days=1)).strftime("%Y-%m-%d")
@@ -70,8 +73,9 @@ class YFinanceProvider:
         i = self._get_info(ticker)
         if not i or i.get("quoteType") == "ETF":
             return None
+        known_at = self._today()     # yfinance serves today's figures, whatever date was asked for
         return Fundamentals(
-            ticker=ticker, as_of=as_of, point_in_time=False,
+            ticker=ticker, as_of=as_of, known_at=known_at, point_in_time=known_at <= as_of,
             market_cap=_f(i.get("marketCap")), pe=_f(i.get("trailingPE")), pb=_f(i.get("priceToBook")),
             ps=_f(i.get("priceToSalesTrailing12Months")), ev_ebitda=_f(i.get("enterpriseToEbitda")),
             roe=_f(i.get("returnOnEquity")), roic=None,

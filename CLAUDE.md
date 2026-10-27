@@ -20,7 +20,7 @@ Live demo: https://consilium-neon.vercel.app (no login, no API key)
 ```bash
 python3.11 -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
-pytest                 # 51 tests, ~2s, no network, no keys
+pytest                 # 103 tests, ~3s, no network, no keys
 consilium demo         # free offline backtest, ~0.6s
 consilium serve        # dashboard on :8765
 ```
@@ -49,8 +49,11 @@ consilium serve        # dashboard on :8765
   failed model call abstains and records why.
 - **No silent neutrals.** An abstention is excluded from the blend, never
   counted as a neutral opinion.
-- **Point-in-time or say so.** Never read data the date wouldn't have had. When
-  a provider can't guarantee it, surface the warning (see `yf.py`).
+- **Point-in-time, enforced.** Never read data the date wouldn't have had.
+  Every fundamentals row carries `known_at`, the first date it was public, and
+  `AnalysisContext` withholds any row with `known_at > date` (the analyst
+  abstains, the cycle records why, the backtest reports it). Prices are sliced
+  by date in `PriceBook`. A new provider must stamp `known_at` honestly.
 - **Everything is reproducible.** The synthetic provider is seeded; the engine
   is deterministic; the prompt cache makes LLM runs replayable.
 - **Money is guarded.** `CONSILIUM_NO_LLM` is enforced inside `make_llm()` so it
