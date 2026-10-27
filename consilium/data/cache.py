@@ -55,7 +55,14 @@ class CachedProvider:
         # bucketing it (by month, say) would let a run that asked for the 29th
         # hand the 29th's numbers to a later run asking for the 1st.
         bucket = as_of if self._inner.point_in_time else "latest"
-        return self._through(self._key("fundamentals", ticker=ticker, as_of=bucket),
+        path = self._key("fundamentals", ticker=ticker, as_of=bucket)
+        # A row cached before provenance stamps has no known_at. Served as is
+        # it would be withheld on every date, today included; refetch it once.
+        if str(path) not in self._mem and path.exists():
+            data = json.loads(path.read_text())
+            if data and not data.get("known_at"):
+                path.unlink()
+        return self._through(path,
                              lambda: self._inner.fundamentals(ticker, as_of),
                              lambda d: Fundamentals(**d) if d else None)
 

@@ -151,3 +151,16 @@ def test_yfinance_rows_are_stamped_with_the_download_date():
     assert now.point_in_time is True and now.knowable_on(TODAY)
     later = prov.fundamentals("AAPL", (_date.fromisoformat(TODAY) + timedelta(days=1)).isoformat())
     assert later.point_in_time is True
+
+
+def test_cache_refetches_rows_cached_before_provenance_stamps(tmp_path):
+    src = LatestOnly()
+    cached = CachedProvider(src, cache_dir=tmp_path / "cache")
+    path = cached._key("fundamentals", ticker="AAPL", as_of="latest")
+    stale = src.fundamentals("AAPL", TODAY).model_dump()
+    del stale["known_at"]                                     # what a pre-upgrade cache file holds
+    path.write_text(__import__("json").dumps(stale))
+    row = cached.fundamentals("AAPL", TODAY)
+    assert row.known_at == TODAY and src.calls == 2            # refetched once, then stamped on disk
+    assert __import__("json").loads(path.read_text())["known_at"] == TODAY
+    assert cached.fundamentals("AAPL", TODAY).known_at == TODAY and src.calls == 2   # and served from memory after
