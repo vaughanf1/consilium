@@ -136,9 +136,10 @@ def run_cycle(ctx: CycleContext, as_of: str, broker: Broker, universe: list[str]
     traded = sum(f.price * f.quantity for f in fills)
 
     bench_mark = ctx.book.mark(spec.benchmark, as_of)
+    withheld = [TickerSkip(ticker=t, reason=r) for t, r in sorted(actx.withheld.items())]
     rec = CycleRecord(
         id=uuid.uuid4().hex[:12], fund=spec.name, as_of=as_of, universe=universe, marks=marks,
-        sectors={t: sectors.get(t, "Unknown") for t in tradeable}, skipped=skipped,
+        sectors={t: sectors.get(t, "Unknown") for t in tradeable}, skipped=skipped, withheld=withheld,
         strategies=strategy_records, verdict=verdict, target_weights=targets, risk_events=exit_events + risk.events,
         final_weights=risk.weights, equity_before=equity_before, cash_before=cash_before,
         orders=orders, fills=fills, positions=positions_after, cash=cash_after, nav=nav,

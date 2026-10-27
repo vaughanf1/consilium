@@ -58,6 +58,10 @@ def _print_metrics(res) -> None:
         t.add_row(f"Monte Carlo ({mc['paths']} paths)",
                   f"P(loss) {mc['prob_loss']:.0%} · terminal p5 ${mc['terminal']['p5']:,.0f} / p95 ${mc['terminal']['p95']:,.0f}", "")
     console.print(t)
+    if res.point_in_time:
+        p = res.point_in_time
+        console.print(f"[dim]point-in-time: prices {p.prices} · fundamentals {p.fundamentals}"
+                      + (f" ({p.withheld_rows} rows withheld on {p.meetings_affected}/{p.meetings} meetings)" if p.withheld_rows else "") + "[/]")
     if res.point_in_time_warning:
         console.print(f"[yellow]⚠ {res.point_in_time_warning}[/]")
     if res.survivorship_warning:
@@ -244,7 +248,8 @@ def main(argv=None) -> None:
     def common(sp, mandate_required=True):
         sp.add_argument("mandate", nargs=None if mandate_required else "?", help="mandate name or YAML path")
         sp.add_argument("--tickers", help="comma/space separated universe")
-        sp.add_argument("--provider", default="auto", help="synthetic | yfinance | edgar (yfinance prices + as-filed SEC fundamentals; default auto → yfinance)")
+        sp.add_argument("--provider", default="auto", help="synthetic | yfinance | edgar (yfinance prices + as-filed SEC fundamentals). "
+                        "Default auto: edgar when CONSILIUM_SEC_USER_AGENT is set, else yfinance (fundamentals withheld on past dates)")
         sp.add_argument("--model", help="LLM for the personas, e.g. claude-sonnet-5 or ollama:llama3.1")
         sp.add_argument("--json", action="store_true", help="print the full JSON to stdout")
         sp.add_argument("--membership", help="CSV of index membership spells (ticker,start_date,end_date); "

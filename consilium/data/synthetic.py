@@ -119,7 +119,7 @@ class SyntheticProvider:
         eps = max(0.05, price / (18 + 12 * (-qq)) ) * (1 + rng.normal(0, 0.05))
         roe = float(np.clip(0.14 + 0.18 * qq + rng.normal(0, 0.02), -0.2, 0.6))
         return Fundamentals(
-            ticker=ticker, as_of=as_of, point_in_time=True,
+            ticker=ticker, as_of=as_of, known_at=as_of, point_in_time=True,
             market_cap=price * shares,
             pe=float(np.clip(price / eps, 4, 120)),
             pb=float(np.clip(3 + 4 * qq + rng.normal(0, 0.3), 0.5, 25)),

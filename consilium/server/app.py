@@ -25,7 +25,7 @@ from consilium.analysts import describe_analysts
 from consilium.core.build import build_info
 from consilium.core.paths import MANDATES_DIR, RUNS_DIR, SERVERLESS, ensure_home, load_env_file
 from consilium.core.spec import FundSpec, dump_spec, load_spec
-from consilium.data import make_provider
+from consilium.data import available_providers, make_provider
 from consilium.ledger import Ledger
 from consilium.llm import current_model, list_models, llm_available
 from consilium.server.guard import SpendGuard
@@ -95,7 +95,7 @@ def create_app() -> FastAPI:
     @app.get("/api/meta")
     def meta():
         return {"analysts": describe_analysts(), "models": list_models(), "current_model": current_model(),
-                "llm_available": llm_available(), "providers": ["synthetic", "yfinance"], "serverless": SERVERLESS,
+                "llm_available": llm_available(), "providers": available_providers(), "serverless": SERVERLESS,
                 "durable": blob_store() is not None, "budget": guard.status(), "build": build_info()}
 
     # mandates -----------------------------------------------------------

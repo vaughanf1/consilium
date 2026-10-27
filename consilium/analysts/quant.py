@@ -95,7 +95,7 @@ class ValueQualityAnalyst(Analyst):
     def view(self, ticker: str, ctx: AnalysisContext) -> View:
         f = ctx.fundamentals(ticker)
         if f is None:
-            return self._abstain(ticker, ctx.date, "no fundamentals")
+            return self._abstain(ticker, ctx.date, ctx.no_fundamentals_reason(ticker))
         parts: dict[str, float] = {}
         if f.pe is not None and f.pe > 0:
             parts["earnings_yield"] = _tanh((1 / f.pe - 0.05) , 0.03)

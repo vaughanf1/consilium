@@ -436,6 +436,9 @@
     const w = $("#bt-warning"); w.classList.remove("err");
     const warns = [res.point_in_time_warning, res.survivorship_warning].filter(Boolean);
     if (warns.length) { w.textContent = warns.map((x) => `⚠ ${x}`).join("\n"); w.style.whiteSpace = "pre-line"; w.classList.remove("hidden"); } else w.classList.add("hidden");
+    const pit = res.point_in_time;
+    $("#bt-pit").textContent = pit ? `point-in-time: prices ${pit.prices} · fundamentals ${pit.fundamentals}` +
+      (pit.withheld_rows ? ` (${pit.withheld_rows} rows withheld on ${pit.meetings_affected}/${pit.meetings} meetings)` : "") : "";
     const staffedLLM = res.records[0] && res.records[0].strategies.some((s) => s.views.some((v) => (state.meta?.analysts || []).find((a) => a.name === v.analyst)?.kind === "llm"));
     $("#bt-status").innerHTML = `${res.fund} · ${res.start} → ${res.end} · ${res.metrics.n_periods} meetings · ${res.provider}` +
       (staffedLLM && !res.llm_used ? ` · <span class="warn">no AI key here, so the AI analysts sat out and the committee ran on quant analysts and rules</span>` : res.llm_used ? ` · model ${esc(res.model || state.meta?.current_model || "")}` : "");
@@ -743,6 +746,7 @@
       $("#c-date").value = "2025-06-30";
       const syncProvider = () => { $("#provider-pill").textContent = `data: ${$("#c-fund").closest(".filters") && $("#view-council").classList.contains("active") ? $("#c-provider").value : $("#f-provider").value}`; };
       ["#c-provider", "#f-provider"].forEach((sel) => { const el = $(sel); if (el) el.onchange = syncProvider; });
+      if ((state.meta?.providers || []).includes("edgar")) $$(".edgar-only").forEach((o) => o.classList.remove("hidden"));
       $$(".nav button").forEach((b) => b.addEventListener("click", syncProvider));
       syncProvider();
       const last = await api("/api/ledger");

@@ -247,13 +247,20 @@ fully point-in-time), `long-short-value` (dollar-neutral discretionary).
 | Provider | Prices | Fundamentals | Point-in-time | Key |
 |---|---|---|---|---|
 | `synthetic` | seeded GBM with sector factors and regime shocks | derived from a slowly-drifting "quality" state | yes | none |
-| `yfinance` (default) | historical, adjusted | **latest only** | prices yes, fundamentals **no** | none |
+| `yfinance` | historical, adjusted | **latest only** — withheld on past dates | yes, by withholding | none |
+| `edgar` | yfinance | **as filed** with the SEC, indexed by filing date | yes | `CONSILIUM_SEC_USER_AGENT="Name you@example.com"` (a contact, not a key) |
 
-yfinance fundamentals have no filing history, so an LLM or value analyst
-backtested on them sees today's ratios on past dates. Consilium prints a
-warning on such runs and the dashboard shows it. Price-based analysts are
-unaffected. Implement `DataProvider` (`consilium/data/protocol.py`) —
-three methods — to plug in a point-in-time source.
+`--provider auto` (the default) is `edgar` when the SEC contact is set and
+`yfinance` otherwise. **Point-in-time is enforced, not assumed.** Every
+fundamentals row is stamped with `known_at`, the first date its figures were
+public: the filing date on EDGAR, the download date on yfinance. The analyst
+context refuses any row with `known_at` after the meeting date, so a value or
+LLM analyst backtested on yfinance never sees today's ratios on past dates — it
+abstains, the meeting records why, and the backtest reports how many rows were
+withheld (CLI, API and dashboard). Price-based analysts are unaffected: the
+price book never returns a bar after the date. Implement `DataProvider`
+(`consilium/data/protocol.py`) — three methods, stamping `known_at` honestly —
+to plug in another source.
 
 ---
 
@@ -277,7 +284,7 @@ consilium/
   dashboard/   index.html · app.css · app.js
   mandates/    bundled YAML mandates
   cli.py
-tests/         51 tests: determinism, point-in-time, committee mechanics, risk, costs, ledger, API, LLM path (fake client)
+tests/         103 tests: determinism, point-in-time enforcement, committee mechanics, risk, costs, ledger, API, LLM path (fake client)
 ```
 
 ## Extending

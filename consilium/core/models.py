@@ -24,10 +24,19 @@ class Bar(BaseModel):
 
 
 class Fundamentals(BaseModel):
-    """A point-in-time-ish fundamentals row. Nullable everywhere: providers differ."""
+    """A fundamentals row, stamped with the date it became knowable.
+
+    `as_of` is the date the row describes; `known_at` is the first date on
+    which the figures in it were public. For an as-filed source (EDGAR) or
+    the synthetic market they coincide. For a latest-only source (yfinance)
+    `known_at` is the day the numbers were downloaded, whatever `as_of` was
+    asked for. `AnalysisContext` refuses any row with known_at > date, so a
+    backtest can never read a number the date would not have had.
+    Nullable everywhere else: providers differ."""
 
     ticker: str
     as_of: str
+    known_at: str | None = Field(default=None, description="First date the figures were public; None = unknown, treated as not knowable")
     market_cap: float | None = None
     pe: float | None = None
     pb: float | None = None
@@ -46,6 +55,11 @@ class Fundamentals(BaseModel):
     dividend_yield: float | None = None
     beta: float | None = None
     point_in_time: bool = Field(default=False, description="True only if the provider guarantees the row was public by as_of")
+
+    def knowable_on(self, date: str) -> bool:
+        """Could a reader on `date` have had these figures? Strict: a row with
+        no provenance is not knowable, and neither is one published later."""
+        return self.known_at is not None and self.known_at <= date
 
 
 class Profile(BaseModel):
@@ -224,6 +238,7 @@ class CycleRecord(BaseModel):
     marks: dict[str, float]
     sectors: dict[str, str] = Field(default_factory=dict)
     skipped: list[TickerSkip] = Field(default_factory=list)
+    withheld: list[TickerSkip] = Field(default_factory=list)   # fundamentals refused: not knowable on as_of
     strategies: list[StrategyRecord]
     verdict: Verdict
     target_weights: dict[str, float]  # post-committee, post-sizing, pre-risk
